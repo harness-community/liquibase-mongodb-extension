@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Download liquibase mongodb xsd
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Relative path under $GITHUB_WORKSPACE to place the repository
           path: liquibase-mongodb
