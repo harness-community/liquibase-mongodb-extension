@@ -80,7 +80,7 @@
         <dependency>
             <groupId>org.codehaus.groovy</groupId>
             <artifactId>groovy-all</artifactId>
-            <version>3.0.19</version>
+            <version>3.0.25</version>
             <scope>test</scope>
             <type>pom</type>
             <exclusions>
