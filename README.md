@@ -202,12 +202,10 @@ You can either download a released JAR from the Harness Maven repository or buil
 
 #### 1. Download Prebuilt JAR (Recommended)
 
-Browse available versions in the Harness Maven repository from [Registry](https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension?project=gar-prod-setup). You can then download a specific version using curl, for example:
+Browse available versions in the Harness Maven repository from [Registry](https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension?project=gar-prod-setup). You can download the latest version using curl:
 
 ```bash
-curl -L \
-  "https://us-maven.pkg.dev/gar-prod-setup/harness-maven-public/io/harness/liquibase-mongodb-dbops-extension/1.1.0-4.24.0/liquibase-mongodb-dbops-extension-1.1.0-4.24.0.jar" \
-  -o liquibase-mongodb-dbops-extension-1.1.0-4.24.0.jar
+curl -s https://us-maven.pkg.dev/gar-prod-setup/harness-maven-public/io/harness/liquibase-mongodb-dbops-extension/maven-metadata.xml | grep release | sed "s/.*<release>\([^<]*\)<\/release>.*/\1/" || echo "none"
 ```
 
 #### 2. Build from Source
