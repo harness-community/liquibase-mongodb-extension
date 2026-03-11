@@ -198,13 +198,44 @@ jackson-databind:2.11.3
 
 ### Installing
 
-* Clone the project
+You can either download a released JAR from the Harness Maven repository or build the project from source.
 
+#### 1. Download Prebuilt JAR (Recommended)
+
+Browse available versions in the Harness Maven repository from [Registry](https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension?project=gar-prod-setup). You can download the latest version using curl, for example:
+
+```bash
+curl -L \                                                                                                                                  
+  "https://us-maven.pkg.dev/gar-prod-setup/harness-maven-public/io/harness/liquibase-mongodb-dbops-extension/1.1.0-4.24.0/liquibase-mongodb-dbops-extension-1.1.0-4.24.0.jar" \
+  -o liquibase-mongodb-dbops-extension-1.1.0-4.24.0.jar
+```
+
+#### 2. Build from Source
+
+a. Clone the repository
 ```shell
 git clone https://github.com/harness-community/liquibase-mongodb-extension
+cd liquibase-mongodb-extension
 ```  
-* [Run tests](#running-tests)
+b. Build the project : `mvn clean install`
+c. The generated JAR will be available under: `target/liquibase-mongodb-dbops-extension-<version>.jar`
 
+#### 3. Move JAR file to Liquibase lib Directory
+
+Once the JAR file is available, we need place the JAR file into your Liquibase lib directory
+Based on Liquibase Installation method, the lib directory will be as follows:
+```sh
+# if liquibase is installed via liquibase website
+`<liquibase-home>/internals/lib`
+
+# if liquibase is installed via brew
+`/opt/homebrew/opt/liquibase/libexec/lib`
+```
+This makes the extension available to **Liquibase CLI**.
+
+---
+
+* [Run tests](#running-tests)
 <a name="running-tests"></a>
 ## Running tests
 
@@ -221,15 +252,15 @@ mvn clean install -Prun-its
 ```
 
 #### Run integration test driver backward compatibility
-1. Produce test containing jar
+1. Produce test containing JAR:
 ```shell
 mvn clean install -Ptest-jar
 ```
-2. Go to test-project
+2. Go to test-project:
 ```shell
 cd test-project
 ```
-3. Run backward compatibility test with provided 3x driver
+3. Run backward compatibility test with provided 3x driver:
 ```shell
 mvn clean install -Prun-its,mongo-3x
 ```
@@ -297,6 +328,4 @@ Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on our code of cond
 ## License
 
 This project is licensed under the Apache License Version 2.0 - see the [LICENSE.md](LICENSE.md) file for details
-
-
 
