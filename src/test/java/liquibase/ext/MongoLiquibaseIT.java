@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static liquibase.changelog.ChangeSet.ExecType.EXECUTED;
+import static liquibase.changelog.ChangeSet.ExecType.MARK_RAN;
 import static liquibase.changelog.ChangeSet.ExecType.SKIPPED;
 import static liquibase.ext.mongodb.TestUtils.getCollections;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -280,6 +281,37 @@ class MongoLiquibaseIT extends AbstractMongoIntegrationTest {
                         "expectedCollectionResultsExists"
                 );
 
+    }
+
+    @SneakyThrows
+    @Test
+    void testMongoIndexExistsPrecondition() {
+        final Liquibase liquibase = new Liquibase("liquibase/ext/changelog.index-precondition.test.xml", new ClassLoaderResourceAccessor(), database);
+        liquibase.update("");
+
+        final List<MongoRanChangeSet> changeSets = findAllRanChangeSets.queryForList(database).stream()
+                .map(converter::fromDocument)
+                .collect(Collectors.toList());
+
+        assertThat(changeSets).hasSize(3)
+                .extracting(MongoRanChangeSet::getId, MongoRanChangeSet::getOrderExecuted, MongoRanChangeSet::getExecType)
+                .containsExactly(
+                        tuple("1", 1, EXECUTED),
+                        tuple("2", 2, EXECUTED),
+                        tuple("3", 3, MARK_RAN)
+                );
+
+        final List<Document> indexes = new ArrayList<>();
+        connection.getMongoDatabase().getCollection("testCollection").listIndexes().into(indexes);
+        assertThat(indexes)
+                .filteredOn(i -> "userId_1".equals(i.getString("name")))
+                .hasSize(1)
+                .first()
+                .extracting(i -> (Document) i.get("key"))
+                .satisfies(key -> {
+                    assertThat(key).containsEntry("userId", 1);
+                    assertThat(key).doesNotContainKey("type");
+                });
     }
 
     @SneakyThrows
