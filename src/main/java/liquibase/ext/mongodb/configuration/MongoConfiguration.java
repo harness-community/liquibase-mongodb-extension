@@ -12,8 +12,6 @@ public class MongoConfiguration implements AutoloadedConfigurations {
     public static final ConfigurationDefinition<Boolean>  ADJUST_TRACKING_TABLES_ON_STARTUP;
     public static final ConfigurationDefinition<Boolean>  SUPPORTS_VALIDATOR;
     public static final ConfigurationDefinition<Boolean>  RETRY_WRITES;
-    
-    // Mongosh configuration
     public static final ConfigurationDefinition<String>   MONGOSH_PATH;
     public static final ConfigurationDefinition<Integer>  MONGOSH_TIMEOUT_SECONDS;
     public static final ConfigurationDefinition<Boolean>  MONGOSH_KEEP_TEMP_FILES;
@@ -47,14 +45,13 @@ public class MongoConfiguration implements AutoloadedConfigurations {
                 .setDefaultValue(TRUE)
                 .build();
 
-        // Mongosh configuration
         MONGOSH_PATH = builder.define("mongoshPath", String.class)
                 .setDescription("Path to mongosh executable. If not specified, searches system PATH and LIQUIBASE_MONGOSH_PATH environment variable.")
                 .build();
 
         MONGOSH_TIMEOUT_SECONDS = builder.define("mongoshTimeoutSeconds", Integer.class)
                 .setDescription("Maximum time in seconds to wait for mongosh script execution")
-                .setDefaultValue(300) // 5 minutes default
+                .setDefaultValue(300)
                 .build();
 
         MONGOSH_KEEP_TEMP_FILES = builder.define("mongoshKeepTempFiles", Boolean.class)
@@ -84,7 +81,7 @@ public class MongoConfiguration implements AutoloadedConfigurations {
                 .setDescription("Whether to retain temporary mongosh script files after execution")
                 .setDefaultValue(false)
                 .build();
-                
+
         MONGOSH_TEMP_NAME = builder.define("mongoshTempName", String.class)
                 .setDescription("Custom filename pattern for temporary mongosh script files")
                 .build();

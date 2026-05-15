@@ -2,198 +2,200 @@
 
 ## Project Overview
 
-**Harness Liquibase MongoDB Extension** - A Harness-enhanced fork of the Liquibase MongoDB Extension with additional features including Mongo Native Executor for executing native MongoDB operations.
+This is the Liquibase MongoDB Extension, a Harness-enhanced fork that provides MongoDB support for Liquibase database migrations. The extension allows executing MongoDB operations through Liquibase changesets and includes Harness-specific enhancements:
 
-This extension provides enterprise-grade database change management for MongoDB deployments through Liquibase's changeset framework, calling specific `mongo-java-driver` methods.
+- **Mongosh-backed executor** for inline and file-based shell scripts (`mongo` and `mongoFile` changes)
+- **executeNative command** for arbitrary MongoDB JSON commands
+- **mongoIndexExists precondition** for safer index management
 
-**Key Features:**
-- Mongo Native Executor (`mongo` and `mongoFile` changeTypes)
-- MongoDB change types (createIndex, dropIndex, insertOne, insertMany, etc.)
-- MongoDB preconditions (documentExists, collectionExists, mongoIndexExists)
-- Integration with Liquibase 4.24.0
+The project extends Liquibase's NoSQL support with MongoDB-specific implementations.
 
-**Repository:** https://git0.harness.io/l7B_kbSEQD2wjrM7PShm5w/default/CD/liquibase-mongodb-extension.git
+**Repository**: liquibase/liquibase-mongodb  
+**Maven Artifact**: `org.liquibase.ext:liquibase-mongodb`  
+**Current Version**: 4.33.0.1-SNAPSHOT
 
 ## Build System
 
-- **Build tool**: Maven 3.x
-- **Java version**: 1.8
-- **Clean and build**: `mvn clean install`
+- **Build tool**: Maven
+- **Build project**: `mvn clean install`
 - **Build without tests**: `mvn clean install -DskipTests`
 - **Package JAR**: `mvn package`
+- **Install to local repo**: `mvn install`
 
 ## Testing
 
-- **Run all unit tests**: `mvn test`
-- **Run all integration tests**: `mvn verify` or `mvn failsafe:integration-test`
+- **Run all tests**: `mvn test`
+- **Run integration tests**: `mvn test -Prun-its`
 - **Run specific test class**: `mvn test -Dtest=ClassName`
-- **Run specific test method**: `mvn test -Dtest=ClassName#methodName`
-- **Test file patterns**: 
-  - Unit tests: `*Test.java`
-  - Integration tests: `*IT.java`
-  - Groovy tests: `*.groovy` in `src/test/groovy/`
+- **Run single test method**: `mvn test -Dtest=ClassName#methodName`
+- **Test file pattern**: `*Test.java` in `src/test/java/`
 
-**Test frameworks:**
-- JUnit 5 (Jupiter)
-- Mockito for mocking
-- AssertJ for assertions
-- Hamcrest for matchers
+**MongoDB Connection**: Tests require a MongoDB instance. Connection string is configured in `src/test/resources/liquibase.properties`:
+```
+url=mongodb://localhost:27017/test_db?socketTimeoutMS=100&connectTimeoutMS=100&serverSelectionTimeoutMS=100
+```
 
-## Code Quality & Security
+**Important**: Adjust the connection string in `liquibase.properties` before running tests if using a different MongoDB instance.
 
-- **Git hooks**: Pre-commit and pre-push hooks enabled
-  - **Pre-commit**: Git-leaks security scan (checks for secrets/credentials)
-  - **Pre-push**: Additional validation
-- **Code coverage**: JaCoCo plugin enabled (`mvn jacoco:report`)
-- **Auto-run after agent completes**: Git hooks will automatically run on commit/push
+## Linting & Formatting
+
+- **Check style**: Maven parent POM may include Checkstyle or Spotless (check `pom.xml` for plugins)
+- **No automatic formatting detected**: No pre-commit hooks found
+- **Manual review**: Code style follows standard Java conventions
 
 ## Git Workflow
 
-- **Default branch**: `main`
-- **Branch naming**: `feat/DBOPS-123-short-description` or `fix/DBOPS-456-short-description`
-  - Types: `feat`, `fix`, `build`, `chore`, `refactor`, `test`, `docs`
-- **Commit format**: `<type>: [DBOPS-TICKET]: <description>`
-  - Example: `feat: [DBOPS-2368]: mongoIndexExists preCondition`
-  - Example: `fix: [DBOPS-1840]: selective property serialisation for mongo native executor`
+- **Branch naming**: `feature/DBOPS-123-short-description` or `fix/DBOPS-456-short-description`
+- **Commit format**: `<type>: [DBOPS-XXX]: <description>`
+  - Types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `perf`
+  - Example: `feat: [DBOPS-1941]: Add mongoIndexExists precondition`
+  - Example: `fix: [DBOPS-2105]: Handle null connection string in getVisibleUrl`
 - **PR title format**: Same as commit format
-- **Jira project**: DBOPS
+- **Default branch**: `main`
 
 ## DOs
 
 - Always run tests before committing (`mvn test`)
-- Follow existing code patterns and conventions in the codebase
-- Use descriptive commit messages with Jira ticket references
-- Add unit tests for all new change types and preconditions
-- Update XSD schema files when adding new change types or attributes
-- Add integration tests for database operations
-- Use Lombok annotations (@Getter, @Setter, etc.) for boilerplate code
-- Update README.md when adding new features or changeTypes
-- Ensure git-leaks pre-commit hook passes (never commit secrets)
-- Follow Liquibase extension conventions for naming and structure
+- Follow existing code patterns in the codebase
+- Use descriptive commit messages with JIRA ticket references (DBOPS-XXX)
+- Add unit tests for all new functionality
+- Update relevant documentation when adding new features or changes
+- Keep changes focused and atomic per commit
+- Ensure MongoDB connection is available before running integration tests
+- Use the `run-its` Maven profile when running integration tests
 
 ## DON'Ts
 
 - Never force push to main branch
-- Never commit secrets, .env files, credentials, or API keys
-- Never run destructive commands without confirmation
-- Never skip git hooks (--no-verify) - they protect against security issues
-- Don't modify core Liquibase interfaces without thorough testing
-- Don't add new dependencies without considering compatibility with Liquibase 4.24.0
-- Don't skip integration tests when modifying database operations
-- Don't change MongoDB driver version without testing compatibility
+- Never commit secrets, credentials, or connection strings with real passwords
+- Never skip tests when making functional changes
+- Never commit IDE-specific files (.idea/, *.iml, *.iws, .project, .classpath)
+- Never modify the Maven parent POM reference without team approval
+- Never change the Liquibase core version without verifying compatibility
 
 ## Commands to Never Run
 
 - `git push --force origin main`
 - `git push --force origin master`
-- `git commit --no-verify` (skips git-leaks security scan)
-- `git push --no-verify` (skips validation)
-- `rm -rf target/` is OK, but never `rm -rf /` or `rm -rf .` or `rm -rf *`
+- `git commit --no-verify` (never skip hooks, even if none currently configured)
+- `git push --no-verify` (never skip hooks)
+- `rm -rf /` or any destructive recursive delete
+- `DROP DATABASE` or `DROP TABLE` commands on production databases
 
 ## Project Structure
 
 ```
-liquibase-mongodb-extension/
+liquibase-mongodb/
 ├── src/
 │   ├── main/
-│   │   ├── java/liquibase/
-│   │   │   ├── ext/mongodb/
-│   │   │   │   ├── change/           # MongoDB change types (createIndex, insertOne, etc.)
-│   │   │   │   ├── changelog/        # Changelog parsing
-│   │   │   │   ├── command/          # Execute-native command implementation
-│   │   │   │   ├── configuration/    # MongoDB configuration
-│   │   │   │   ├── database/         # MongoDB connection, driver, and database impl
-│   │   │   │   ├── lockservice/      # Distributed locking
-│   │   │   │   ├── precondition/     # MongoDB preconditions
-│   │   │   │   ├── statement/        # MongoDB statements
-│   │   │   │   └── tools/            # Mongosh runner and file creator
-│   │   │   └── nosql/
-│   │   │       └── executor/         # Mongosh executor and generator
+│   │   ├── java/
+│   │   │   ├── liquibase/
+│   │   │   │   ├── ext/mongodb/          # MongoDB-specific Liquibase extensions
+│   │   │   │   │   ├── change/           # MongoDB change types (createCollection, insertOne, etc.)
+│   │   │   │   │   ├── changelog/        # Changelog parsing and handling
+│   │   │   │   │   ├── command/          # Custom commands (executeNative, etc.)
+│   │   │   │   │   ├── configuration/    # MongoDB connection configuration
+│   │   │   │   │   ├── database/         # MongoDB database implementation
+│   │   │   │   │   ├── lockservice/      # Database lock service for MongoDB
+│   │   │   │   │   ├── precondition/     # MongoDB preconditions (mongoIndexExists, etc.)
+│   │   │   │   │   ├── statement/        # MongoDB statement implementations
+│   │   │   │   │   └── tools/            # Utility tools and helpers
+│   │   │   │   └── nosql/                # Generic NoSQL infrastructure
+│   │   │   │       ├── changelog/        # NoSQL changelog tracking
+│   │   │   │       ├── database/         # NoSQL database abstraction
+│   │   │   │       ├── executor/         # NoSQL executors (including MongoshExecutor)
+│   │   │   │       ├── lockservice/      # NoSQL lock service
+│   │   │   │       ├── parser/           # NoSQL changelog parsers
+│   │   │   │       ├── snapshot/         # NoSQL snapshot generation
+│   │   │   │       └── statement/        # NoSQL statement abstractions
 │   │   └── resources/
-│   │       ├── META-INF/services/    # Liquibase service provider interfaces
-│   │       ├── liquibase/            # i18n properties
-│   │       └── www.liquibase.org/    # XSD schema files
+│   │       ├── META-INF/services/        # Java SPI service definitions
+│   │       ├── liquibase/i18n/           # Internationalization messages
+│   │       └── www.liquibase.org/xml/ns/mongodb/  # XSD schemas for MongoDB changes
 │   └── test/
-│       ├── java/liquibase/ext/       # Unit and integration tests
-│       ├── groovy/liquibase/ext/     # Groovy-based tests
-│       └── resources/                # Test resources and Docker configs
-├── pom.xml                           # Maven build configuration
-├── README.md                         # Project documentation
-└── AGENTS.md                         # This file
+│       ├── java/                         # Test classes (mirrors main structure)
+│       └── resources/                    # Test resources (changelog XMLs, liquibase.properties)
+├── pom.xml                               # Maven project configuration
+├── README.md                             # Project documentation
+└── changelog.txt                         # Release notes and changelog
 ```
 
 ## Important Packages/Folders
 
-Based on recent commit activity, these are the most actively modified areas:
+Based on the project structure and purpose:
 
-1. **src/main/java/liquibase/ext/mongodb/change/** - MongoDB change type implementations
-   - `MongoshChange.java` - Execute inline mongosh commands
-   - `MongoshFileChange.java` - Execute mongosh commands from file
-   - Core change types: CreateIndexChange, DropIndexChange, InsertOneChange, InsertManyChange
+### Core Extension Logic
+- **`src/main/java/liquibase/ext/mongodb/`** - Primary MongoDB extension implementation
+  - `change/` - MongoDB change types (70+ change implementations)
+  - `database/` - MongoDB database connection and metadata
+  - `statement/` - MongoDB operation statements
 
-2. **src/main/java/liquibase/nosql/executor/** - Mongosh executor infrastructure
-   - `MongoshExecutor.java` - Executor for mongosh commands
-   - `MongoshGenerator.java` - SQL to mongosh command generator
+### Harness Enhancements
+- **`src/main/java/liquibase/ext/mongodb/command/`** - Custom commands (executeNative, etc.)
+- **`src/main/java/liquibase/nosql/executor/`** - Mongosh executor for shell script execution
+- **`src/main/java/liquibase/ext/mongodb/precondition/`** - Custom preconditions (mongoIndexExists)
 
-3. **src/main/java/liquibase/ext/mongodb/tools/** - Supporting utilities
-   - `MongoshRunner.java` - Runs mongosh shell commands
-   - `MongoshFileCreator.java` - Creates temporary mongosh script files
+### Infrastructure
+- **`src/main/java/liquibase/nosql/`** - Generic NoSQL support layer that MongoDB extends
+- **`src/main/resources/META-INF/services/`** - Java SPI registrations for Liquibase discovery
 
-4. **src/main/java/liquibase/ext/mongodb/precondition/** - MongoDB preconditions
-   - `MongoIndexExistsPrecondition.java` - Check if index exists
-
-5. **src/main/java/liquibase/ext/mongodb/configuration/** - Configuration management
-   - `MongoConfiguration.java` - MongoDB-specific configuration
-
-6. **src/main/java/liquibase/ext/mongodb/command/** - Command execution
-   - Execute-native command step implementation
-
-7. **src/main/resources/** - Service providers and schemas
-   - META-INF/services - Liquibase SPI registrations
-   - XSD schema files for XML validation
+### Configuration & Schemas
+- **`src/main/resources/www.liquibase.org/xml/ns/mongodb/`** - XSD schemas for MongoDB changelog validation
+- **`src/test/resources/`** - Test changelogs and configuration
 
 ## Language-Specific Guidelines
 
-This is a **Java** project. Use the Java conventions skill for detailed guidance:
-- **Skill**: `make-agent-friendly:java-conventions`
-- **Java version**: 1.8 (legacy compatibility)
-- **Build tool**: Maven
-- **Testing**: JUnit 5 + Mockito + AssertJ
+This is a **Java** project. Use the `maf:java-conventions` skill for Java-specific patterns and best practices.
 
-## Maven Profiles & Properties
+**Key Java Patterns in this project:**
+- Service Provider Interface (SPI) pattern for Liquibase extension discovery
+- Builder patterns for change and statement construction
+- MongoDB Java Driver 5.x API usage
+- JUnit 5 for testing with Mockito for mocking
 
-Key properties defined in pom.xml:
-- `mongodb-driver.version`: 4.10.2 (MongoDB Java Driver)
-- `liquibase.version`: 4.24.0
-- `jupiter.version`: 5.10.0 (JUnit 5)
-- `mockito-core.version`: 4.11.0
-- `lombok.version`: 1.18.30
+## Maven Profiles
 
-## Integration with Liquibase
+- **`run-its`** - Enables integration tests (requires running MongoDB instance)
 
-This extension integrates with Liquibase through:
-- **Service Provider Interface (SPI)**: META-INF/services/ files register custom implementations
-- **Change types**: Custom change classes extending AbstractMongoChange
-- **Preconditions**: Custom precondition classes
-- **Database implementation**: MongoLiquibaseDatabase
-- **Executor**: MongoshExecutor for command execution
+## Dependencies
 
-## External Dependencies
+**Core:**
+- Liquibase Core: 4.33.0
+- MongoDB Java Driver: 5.5.1
+- Jackson Core: 2.15.3
 
-**Key runtime dependencies:**
-- Liquibase Core 4.24.0
-- MongoDB Java Driver (Sync) 4.10.2
-- Jackson Databind (JSON processing)
-- Lombok (compile-time annotation processing)
+**Test:**
+- JUnit Jupiter (JUnit 5)
+- Mockito 4.x
+- Liquibase Test Harness: 1.0.10
 
-**Key test dependencies:**
-- JUnit Jupiter 5.10.0
-- Mockito 4.11.0
-- AssertJ 3.24.2
-- Liquibase Test Harness 1.0.9
+## Useful Commands
 
-## Helpful Resources
+```bash
+# Clean build
+mvn clean install
 
-- **Harness Developer Docs**: https://developer.harness.io/docs/database-devops/concepts/database-devops/concepts/mongodb-command
-- **Maven Repository**: https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension
-- **Upstream Project**: https://github.com/liquibase/liquibase-mongodb
+# Run unit tests only
+mvn test
+
+# Run integration tests (requires MongoDB)
+mvn test -Prun-its
+
+# Skip tests during build
+mvn clean install -DskipTests
+
+# Run specific test
+mvn test -Dtest=MongoLiquibaseIT
+
+# Package without running tests
+mvn package -DskipTests
+
+# Verify build and run all checks
+mvn verify
+```
+
+## Additional Resources
+
+- **Harness MongoDB Docs**: https://developer.harness.io/docs/database-devops/concepts/database-devops/concepts/mongodb-command
+- **Liquibase Documentation**: https://docs.liquibase.com/
+- **MongoDB Java Driver Docs**: https://mongodb.github.io/mongo-java-driver/

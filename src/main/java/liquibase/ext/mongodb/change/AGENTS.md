@@ -1,112 +1,181 @@
-# AGENTS.md - MongoDB Change Types
+# AGENTS.md - MongoDB Changes
 
 ## Purpose
 
-This package contains **Liquibase change type implementations** for MongoDB operations. Change types are the core building blocks that users specify in their changelog files (XML, YAML, JSON) to define database schema migrations.
+This package contains user-facing MongoDB change types that can be used in Liquibase changelogs (XML, YAML, JSON). Each change class represents a specific MongoDB operation and is responsible for:
 
-Each change type corresponds to a MongoDB operation (createIndex, insertOne, etc.) and extends either `AbstractMongoChange` or `AbstractSQLChange` from Liquibase's framework.
+- Parsing changelog attributes into Java objects
+- Validating change parameters
+- Generating one or more MongoDB statements for execution
+- Providing checksum calculation for change tracking
+- Supporting rollback operations where applicable
+
+Changes are the entry point for users defining database migrations.
 
 ## Key Files
 
-### Base Classes
-- **`AbstractMongoChange.java`** - Base class for all MongoDB change types, extends Liquibase's `AbstractChange`
-  - Handles MongoDB-specific validation and execution logic
-  - Provides common checksum and database type checking
+- `AbstractMongoChange.java` - Base class for all MongoDB changes with common functionality
 
-### Standard MongoDB Operations
-- **`CreateIndexChange.java`** - Create indexes on MongoDB collections
-- **`DropIndexChange.java`** - Drop indexes from MongoDB collections
-- **`CreateCollectionChange.java`** - Create new MongoDB collections with options
-- **`DropCollectionChange.java`** - Drop MongoDB collections
-- **`InsertOneChange.java`** - Insert a single document into a collection
-- **`InsertManyChange.java`** - Insert multiple documents into a collection
-- **`RunCommandChange.java`** - Execute arbitrary MongoDB database commands
-- **`AdminCommandChange.java`** - Execute MongoDB admin commands
+### Collection Management
+- `CreateCollectionChange.java` - Creates MongoDB collections with validators and options
+- `DropCollectionChange.java` - Drops MongoDB collections
 
-### Harness Enhancements (Mongosh Native Executor)
-- **`MongoshChange.java`** - Execute inline JavaScript/MongoDB shell commands via mongosh (changeType: `mongo`)
-  - Most actively modified file in this package
-  - Allows executing native MongoDB shell commands directly in changelog
-  - Uses selective property serialization to keep YAML clean
-- **`MongoshFileChange.java`** - Execute MongoDB shell commands from external .js files (changeType: `mongoFile`)
-  - Second most actively modified file
-  - Supports loading and executing mongosh scripts from file paths
+### Index Management
+- `CreateIndexChange.java` - Creates indexes on collections with various options
+- `DropIndexChange.java` - Drops indexes by keys
+
+### Document Operations
+- `InsertOneChange.java` - Inserts a single document into a collection
+- `InsertManyChange.java` - Inserts multiple documents into a collection
+
+### Command Operations
+- `RunCommandChange.java` - Executes generic `db.runCommand()` operations
+- `AdminCommandChange.java` - Executes `db.adminCommand()` operations (admin database)
+
+### Harness Enhancements (Mongosh)
+- `MongoshChange.java` - Executes inline JavaScript/MongoDB shell commands via mongosh
+- `MongoshFileChange.java` - Executes shell commands from external `.js` files via mongosh
+
+## Architecture
+
+**Change Lifecycle:**
+1. User defines change in changelog XML/YAML/JSON
+2. Liquibase parser creates change instance and sets attributes
+3. Change validates parameters in `validate()` method
+4. Change generates statements via `generateStatements()` method
+5. Statements are executed by `NoSqlExecutor` or `MongoshExecutor`
+6. Change is recorded in DATABASECHANGELOG
+
+**Class Hierarchy:**
+```
+liquibase.change.AbstractChange (Liquibase core)
+└── AbstractMongoChange (MongoDB base)
+    ├── CreateCollectionChange
+    ├── CreateIndexChange
+    ├── InsertOneChange
+    ├── InsertManyChange
+    ├── MongoshChange
+    ├── MongoshFileChange
+    └── ... (all other changes)
+```
+
+## Example Changelog Usage
+
+### XML Format
+```xml
+<changeSet id="1" author="dev">
+    <ext:createCollection collectionName="users">
+        <ext:options>
+            {
+                "validator": {
+                    "$jsonSchema": {
+                        "required": ["email"],
+                        "properties": {
+                            "email": {"bsonType": "string"}
+                        }
+                    }
+                }
+            }
+        </ext:options>
+    </ext:createCollection>
+</changeSet>
+
+<changeSet id="2" author="dev">
+    <ext:insertOne collectionName="users">
+        <ext:document>
+            {"email": "user@example.com", "name": "John"}
+        </ext:document>
+    </ext:insertOne>
+</changeSet>
+
+<changeSet id="3" author="dev">
+    <ext:mongo>
+        db.users.updateMany(
+            { active: { $exists: false } },
+            { $set: { active: true } }
+        )
+    </ext:mongo>
+</changeSet>
+```
 
 ## Testing
 
 - **Run tests for this package**: `mvn test -Dtest=*ChangeTest`
-- **Test file pattern**: `*Change.java` → `*ChangeTest.java` in `src/test/java/liquibase/ext/mongodb/change/`
-- **Integration tests**: Some changes have IT tests: `mvn verify -Dit.test=*IT`
+- **Test file pattern**: `*ChangeTest.java` in `src/test/java/liquibase/ext/mongodb/change/`
+- **Test focus**: 
+  - Validation logic
+  - Statement generation
+  - Serialization/deserialization from XML
 
 ## Dependencies
 
 **Internal:**
-- `liquibase.ext.mongodb.database.*` - MongoDB database connection and driver
-- `liquibase.ext.mongodb.statement.*` - Statement classes for executing operations
-- `liquibase.nosql.executor.MongoshExecutor` - Executor for mongosh commands
+- `liquibase.ext.mongodb.statement.*` - Statement classes generated by changes
+- `liquibase.ext.mongodb.database.MongoLiquibaseDatabase` - MongoDB database type
+- `liquibase.change.*` - Liquibase core change interfaces
 
 **External:**
-- Liquibase Core - `liquibase.change.*`, `liquibase.database.*`
-- MongoDB Java Driver - For MongoDB-specific operations
-- Lombok - `@Getter`, `@Setter`, `@NoArgsConstructor` annotations
+- `liquibase-core:4.33.0` - Liquibase framework
+- `@lombok.*` - Getter/Setter generation for change attributes
 
 ## Important Patterns
 
-### Change Type Registration
-All change types use `@DatabaseChange` annotation to register with Liquibase:
+### Change Attributes
+Changes use Liquibase's attribute system with annotations:
 ```java
-@DatabaseChange(
-    name = "createIndex",
-    description = "Creates an index on a collection",
-    priority = 1
-)
+@DatabaseChangeProperty
+public String getCollectionName() {
+    return collectionName;
+}
 ```
 
-### Selective Property Serialization (Mongosh Changes)
-`MongoshChange` and `MongoshFileChange` implement selective serialization to exclude unnecessary properties from changelog YAML files:
-- Only `mongo` property is serialized for MongoshChange
-- Only `mongoFile` property is serialized for MongoshFileChange
-- This prevents pollution with inherited Liquibase properties like `sql`, `dbms`, `endDelimiter`
-
 ### Statement Generation
-Each change type generates corresponding statement(s):
 ```java
 @Override
 public SqlStatement[] generateStatements(Database database) {
-    return new SqlStatement[] { new MongoshStatement(getMongo()) };
+    return new SqlStatement[] {
+        new CreateCollectionStatement(collectionName, options)
+    };
 }
 ```
 
 ### Validation
-Implement `validate()` method to validate change parameters before execution
+```java
+@Override
+public ValidationErrors validate(Database database) {
+    ValidationErrors errors = super.validate(database);
+    if (collectionName == null) {
+        errors.addError("collectionName is required");
+    }
+    return errors;
+}
+```
+
+### Selective Property Serialization (Harness Enhancement)
+MongoshChange and MongoshFileChange override `getSerializableFields()` to exclude SQL-only properties from changelog serialization, keeping changelogs clean.
 
 ## DOs
 
-- Extend `AbstractMongoChange` for new MongoDB-specific change types
-- Use `@DatabaseChange` annotation with unique name and description
-- Add corresponding statement class in `statement/` package
-- Implement selective serialization if needed (override `getSerializableFields()`)
-- Add unit tests in `src/test/java/.../change/` with naming pattern `*ChangeTest.java`
-- Add integration tests for database operations: `*IT.java`
-- Use Lombok annotations (`@Getter`, `@Setter`, `@NoArgsConstructor`) for boilerplate
-- Update XSD schema files in `src/main/resources/www.liquibase.org/xml/ns/mongodb/` when adding new attributes
-- Register new change types in `META-INF/services/liquibase.change.Change`
+- Extend `AbstractMongoChange` for new MongoDB change types
+- Use `@DatabaseChangeProperty` annotation for all change attributes
+- Implement `validate()` to check required parameters
+- Use descriptive `@DatabaseChangeNote` descriptions for documentation
+- Generate immutable statements (don't reuse statement instances)
+- Support both JSON string and structured options where appropriate
+- Add comprehensive unit tests for validation and statement generation
 
 ## DON'Ts
 
-- Don't modify the base `AbstractMongoChange` without thorough testing across all subclasses
-- Don't skip validation logic - always validate user inputs
-- Don't hardcode database-specific logic - use statements for execution
-- Don't add properties without considering YAML serialization (use selective serialization)
-- Don't break backward compatibility with existing changesets
-- Don't change `@DatabaseChange.name` - this breaks existing changelogs
-- Don't skip checksum calculation logic (affects Liquibase's change detection)
+- Don't perform database operations in the change class - delegate to statements
+- Don't store mutable state in change objects
+- Don't catch exceptions in `generateStatements()` - let validation handle it
+- Don't hardcode database-specific logic - check database type if needed
+- Don't inherit SQL-specific change properties unnecessarily
+- Don't create statements that don't match the change's purpose
 
-## Recent Development Focus
+## Related Packages
 
-The most recent development has focused on:
-1. **Mongosh native executor** - `MongoshChange` and `MongoshFileChange` (13 commits in 6 months)
-2. **Selective property serialization** - Keeping YAML changelogs clean
-3. **MongoIndexExists precondition** - Related precondition support
-
-These features enable users to execute arbitrary MongoDB shell commands while maintaining clean, readable changelog files.
+- `liquibase.ext.mongodb.statement` - Statement implementations generated by changes
+- `liquibase.nosql.executor` - Executors that run the generated statements
+- `liquibase.ext.mongodb.database` - MongoDB database implementation
+- `src/main/resources/www.liquibase.org/xml/ns/mongodb/` - XSD schemas for XML validation

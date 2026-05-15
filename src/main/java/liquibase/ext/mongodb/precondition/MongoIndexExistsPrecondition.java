@@ -1,5 +1,25 @@
 package liquibase.ext.mongodb.precondition;
 
+/*-
+ * #%L
+ * Liquibase MongoDB Extension
+ * %%
+ * Copyright (C) 2019 Mastercard
+ * %%
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * #L%
+ */
+
 import com.mongodb.client.MongoCollection;
 import liquibase.changelog.ChangeSet;
 import liquibase.changelog.DatabaseChangeLog;
@@ -12,7 +32,6 @@ import liquibase.exception.Warnings;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.statement.CountCollectionByNameStatement;
 import liquibase.precondition.AbstractPrecondition;
-import liquibase.util.StringUtil;
 import lombok.Getter;
 import lombok.Setter;
 import org.bson.Document;
@@ -38,43 +57,42 @@ public class MongoIndexExistsPrecondition extends AbstractPrecondition {
     }
 
     @Override
-    public Warnings warn(final Database database) {
+    public Warnings warn(Database database) {
         return new Warnings();
     }
 
     @Override
-    public ValidationErrors validate(final Database database) {
-        final ValidationErrors errors = new ValidationErrors();
-        if (StringUtil.isEmpty(collectionName)) {
+    public ValidationErrors validate(Database database) {
+        ValidationErrors errors = new ValidationErrors();
+        if (isBlank(collectionName)) {
             errors.addError("collectionName is required");
         }
-        if (StringUtil.isEmpty(indexName)) {
+        if (isBlank(indexName)) {
             errors.addError("indexName is required");
         }
         return errors;
     }
 
     @Override
-    public void check(final Database database,
-                      final DatabaseChangeLog changeLog,
-                      final ChangeSet changeSet,
-                      final ChangeExecListener changeExecListener) throws PreconditionFailedException, PreconditionErrorException {
+    public void check(Database database, DatabaseChangeLog changeLog, ChangeSet changeSet,
+                      ChangeExecListener changeExecListener)
+            throws PreconditionFailedException, PreconditionErrorException {
         try {
-            final MongoLiquibaseDatabase mongoDatabase = (MongoLiquibaseDatabase) database;
+            MongoLiquibaseDatabase mongoDatabase = (MongoLiquibaseDatabase) database;
 
-            final CountCollectionByNameStatement countCollectionByNameStatement = new CountCollectionByNameStatement(collectionName);
+            CountCollectionByNameStatement countCollectionByNameStatement =
+                    new CountCollectionByNameStatement(collectionName);
             if (countCollectionByNameStatement.queryForLong(mongoDatabase) == 0L) {
                 throw new PreconditionFailedException(format("Collection %s does not exist", collectionName), changeLog, this);
             }
 
-            final MongoCollection<Document> collection = mongoDatabase.getMongoDatabase().getCollection(collectionName);
-            final List<Document> indexes = new ArrayList<>();
+            MongoCollection<Document> collection = mongoDatabase.getMongoDatabase().getCollection(collectionName);
+            List<Document> indexes = new ArrayList<>();
             collection.listIndexes().into(indexes);
 
-            final boolean found = indexes.stream()
+            boolean found = indexes.stream()
                     .map(d -> d.getString("name"))
                     .anyMatch(indexName::equals);
-
             if (!found) {
                 throw new PreconditionFailedException(
                         format("Index %s does not exist in collection %s", indexName, collectionName),
@@ -82,9 +100,9 @@ public class MongoIndexExistsPrecondition extends AbstractPrecondition {
                         this
                 );
             }
-        } catch (final PreconditionFailedException e) {
+        } catch (PreconditionFailedException e) {
             throw e;
-        } catch (final Exception e) {
+        } catch (Exception e) {
             throw new PreconditionErrorException(e, changeLog, this);
         }
     }
@@ -93,5 +111,8 @@ public class MongoIndexExistsPrecondition extends AbstractPrecondition {
     public String getSerializedObjectNamespace() {
         return GENERIC_CHANGELOG_EXTENSION_NAMESPACE;
     }
-}
 
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+}

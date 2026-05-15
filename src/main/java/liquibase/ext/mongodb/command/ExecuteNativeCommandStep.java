@@ -23,7 +23,6 @@ import liquibase.util.StringUtil;
 import org.bson.Document;
 
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -131,13 +130,6 @@ public class ExecuteNativeCommandStep extends AbstractCommandStep {
             throw new LiquibaseException(FileUtil.getFileNotFoundMessage(file));
         }
         return StreamUtil.readStreamAsString(resource.openInputStream());
-    }
-
-    private static void handleOutput(CommandResultsBuilder resultsBuilder, String output) throws IOException {
-        String encoding = GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue();
-        OutputStreamWriter writer = new OutputStreamWriter(resultsBuilder.getOutputStream(), encoding);
-        writer.write(output);
-        writer.flush();
     }
 }
 

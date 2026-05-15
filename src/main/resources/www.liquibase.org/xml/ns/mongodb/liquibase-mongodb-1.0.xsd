@@ -135,16 +135,16 @@
         </xsd:complexType>
     </xsd:element>
 
-    <xsd:element name="collectionExists">
-        <xsd:complexType>
-            <xsd:attribute name="collectionName" type="xsd:string" use="required"/>
-        </xsd:complexType>
-    </xsd:element>
-
     <xsd:element name="mongoIndexExists">
         <xsd:complexType>
             <xsd:attribute name="collectionName" type="xsd:string" use="required"/>
             <xsd:attribute name="indexName" type="xsd:string" use="required"/>
+        </xsd:complexType>
+    </xsd:element>
+
+    <xsd:element name="collectionExists">
+        <xsd:complexType>
+            <xsd:attribute name="collectionName" type="xsd:string" use="required"/>
         </xsd:complexType>
     </xsd:element>
     

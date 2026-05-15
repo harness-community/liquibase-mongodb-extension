@@ -1,10 +1,12 @@
-# Harness Liquibase MongoDB Extension
+# Liquibase MongoDB Extension
+
+[![Build Status](https://github.com/liquibase/liquibase-mongodb/actions/workflows/build-nightly.yml/badge.svg)](https://github.com/liquibase/liquibase-mongodb/actions/workflows/build-nightly.yml)
 
 *This is a Harness-enhanced fork of the [Liquibase MongoDB Extension](https://github.com/liquibase/liquibase-mongodb) with additional features and improvements.*
 
-**Maven Repository**: [Harness Maven Public Repository](https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension?project=gar-prod-setup)
+**Harness Maven Repository**: [Harness Maven Public Repository](https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension?project=gar-prod-setup)
 
-**Documentation**: [Harness Database DevOps - MongoDB Commands](https://developer.harness.io/docs/database-devops/concepts/database-devops/concepts/mongodb-command)
+**Harness MongoDB Docs**: [Harness Database DevOps - MongoDB Commands](https://developer.harness.io/docs/database-devops/concepts/database-devops/concepts/mongodb-command)
 
 ## Table of contents
 
@@ -34,9 +36,14 @@ The original extension resulted as an alternative to existing MongoDB evolution 
 The extension allows calling specific `mongo-java-driver` methods through Liquibase's changeset framework, providing enterprise-grade database change management for MongoDB deployments.
 
 <a name="release-notes"></a>
-## Release Notes
+## [Release Notes](./changelog.txt)
 
 ### Harness Enhanced Releases
+
+#### 1.0.0-4.33.0
+* Upgrade the MongoDB extension to 4.33.0
+* Based on Liquibase 4.33.0
+* **JAR Download**: [Maven Repository](https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension/1.0.0-4.33.0?project=gar-prod-setup)
 
 #### 1.1.0-4.24.0
 * **Selective Property Serialization** - Enhanced `mongo` and `mongoFile` changeTypes with selective property serialization
@@ -52,88 +59,6 @@ The extension allows calling specific `mongo-java-driver` methods through Liquib
 * Enhanced MongoDB operation execution with improved performance
 * Based on Liquibase 4.24.0
 * **JAR Download**: [Maven Repository](https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension/1.0.0-4.24.0?project=gar-prod-setup)
-
-### Upstream Liquibase MongoDB Extension Releases
-
-#### 4.24.0
-* Support for Liquibase 4.24.0
-
-#### 4.21.0
-* Support for Liquibase 4.20.0
-
-#### 4.4.0
-* Updated code to work with core 4.4.0 [PR #147](https://github.com/liquibase/liquibase-mongodb/pull/147)
-* Bump mockito-core from 3.10.0 to 3.11.0 [PR#151](https://github.com/liquibase/liquibase-mongodb/pull/151)
-* Bump mockito-junit-jupiter from 3.10.0 to 3.11.0 [PR#152](https://github.com/liquibase/liquibase-mongodb/pull/152)
-* Bump snakeyaml from 1.28 to 1.29 [PR#153](https://github.com/liquibase/liquibase-mongodb/pull/153)
-* Bump assertj-core from 3.19.0 to 3.20.0[PR#157](https://github.com/liquibase/liquibase-mongodb/pull/157)
-
-
-#### 4.3.1.1
-* Upgrade Mongo Java Driver from 4.2.1 to 4.2.2
-* Fixed [Issue-111: Is adminCommand really connected to the admin DB?](https://github.com/liquibase/liquibase-mongodb/issues/111)
-
-#### 4.3.1
-* Support for Liquibase 4.3.1
-* This an important release build with 4.2.0 mongo-driver-sync and is compatible with mongo-driver 3.x.x if provided
-* Fixed [Issue-90: Convert all statements to runCommand so it is compatible with majority JavaDriver versions](https://github.com/liquibase/liquibase-mongodb/issues/90)
-* Fixed [Issue-80: Move from deprecated mongo-java-driver](https://github.com/liquibase/liquibase-mongodb/issues/80)
-* Fixed [Issue-71: Support mongodb-driver-sync v4.x](https://github.com/liquibase/liquibase-mongodb/issues/71)
-
-#### 4.2.2.1
-* Fixed [Issue-64:Support for DNS Seed List Connection Format or Atlas Cluster](https://github.com/liquibase/liquibase-mongodb/issues/66)
-* Fixed [Issue-69: Does it support preconditions](https://github.com/liquibase/liquibase-mongodb/issues/69)
-* Fixed [Issue-70: Is there a way to tag the current database state?](https://github.com/liquibase/liquibase-mongodb/issues/70)  
-* Added DocumentExistsPrecondition, ExpectedDocumentCountPrecondition
-* Fixed [Issue-74: createIndex with TTL (expireAfterSeconds) is ignored and normal index created](https://github.com/liquibase/liquibase-mongodb/issues/74)
-* Fixed [Issue-79: CreateCollection silently drops supported options](https://github.com/liquibase/liquibase-mongodb/issues/79)
-
-#### 4.2.2
-* Support for Liquibase 4.2.2
-
-#### 4.2.1
-* Support for Liquibase 4.2.1
-
-#### 4.1.1.2
-* Fixed [Rollback doesn't work with liquibase-mongodb-4.0.0.2 extension](https://github.com/liquibase/liquibase-mongodb/issues/38)
-* Added dropCollection and dropIndex Changes
-* Added NoSql JSON Parser which can pass raw JSON for a property like this:
-```json 
-{
-    "options" : 
-        {
-            "$rawJson" : { ... }
-        }
-}
-```
-For the command line is required to copy to `[liquibase]/lib` 
-libraries : `jackson-annotations-2.11.3.jar, jackson-core-2.11.3.jar, jackson-databind-2.11.3.jar`
-
-* New properties added
-```properties
-# If disabled can be used on API which do not support validators (Azure Cosmos DB with Mongo API, Amazon DocumentDB)
-liquibase.mongodb.supportsValidator=true
-# If enabled will adjust indexes and validators for Liquibase tracking tables LOCK and CHANGELOG. Can be disabled if sure Liquibase not updated.
-liquibase.mongodb.adjustTrackingTablesOnStartup=true
-```
-* Overridden Liquibase table names removed. Now will be used the default ones in Liquibase. If previous releases used then table names should be explicitly passed as parameters.
-Currently, by default as Liquibase default :`DATABASECHANGELOGLOCK, DATABASECHANGELOG`
-Previous releases used by default : `databaseChangeLogLock, databaseChangeLog`
-
-#### 4.1.1
-* Support for Liquibase 4.1.1
-
-#### 4.1.0
-* Support for Liquibase 4.1.0
-
-#### 4.0.0
-* Works with Liquibase v4.0.0
-
-#### 3.10.0
-* Support for Liquibase 3.10
-
-#### 3.9.0
-* First release
 
 <a name="implemented-changes"></a>
 ## Implemented Changes:
@@ -156,9 +81,9 @@ Inserts a Single Document into a collection [insert](https://docs.mongodb.com/ma
 Provides a helper to run specified database commands. This is the preferred method to issue database commands, as it provides a consistent interface between the shell and drivers
 * [__adminCommand__](https://docs.mongodb.com/manual/reference/method/db.adminCommand/#db.adminCommand) - 
 Provides a helper to run specified database commands against the admin database
-* [__mongo__](https://developer.harness.io/docs/database-devops/concepts/database-devops/concepts/mongodb-command) - 
+* [__mongo__](https://developer.harness.io/docs/database-devops/concepts/database-devops/concepts/mongodb-command) -
 Executes inline JavaScript/MongoDB shell commands via mongosh (Harness Enhancement)
-* [__mongoFile__](https://developer.harness.io/docs/database-devops/concepts/database-devops/concepts/mongodb-command) - 
+* [__mongoFile__](https://developer.harness.io/docs/database-devops/concepts/database-devops/concepts/mongodb-command) -
 Executes JavaScript/MongoDB shell commands from external files via mongosh (Harness Enhancement)
 
 <a name="connection-string"></a>
@@ -202,40 +127,42 @@ You can either download a released JAR from the Harness Maven repository or buil
 
 #### 1. Download Prebuilt JAR (Recommended)
 
-Browse available versions in the Harness Maven repository from [Registry](https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension?project=gar-prod-setup). You can download the latest version using curl, for example:
+Browse available versions in the Harness Maven repository from [Registry](https://console.cloud.google.com/artifacts/maven/gar-prod-setup/us/harness-maven-public/io.harness:liquibase-mongodb-dbops-extension?project=gar-prod-setup). You can download a release JAR using `curl`, for example:
 
 ```bash
-curl -L \                                                                                                                                  
-  "https://us-maven.pkg.dev/gar-prod-setup/harness-maven-public/io/harness/liquibase-mongodb-dbops-extension/1.1.0-4.24.0/liquibase-mongodb-dbops-extension-1.1.0-4.24.0.jar" \
-  -o liquibase-mongodb-dbops-extension-1.1.0-4.24.0.jar
+curl -L \
+  "https://us-maven.pkg.dev/gar-prod-setup/harness-maven-public/io/harness/liquibase-mongodb-dbops-extension/1.0.0-4.33.0/liquibase-mongodb-dbops-extension-1.0.0-4.33.0.jar" \
+  -o liquibase-mongodb-dbops-extension-1.0.0-4.33.0.jar
 ```
 
 #### 2. Build from Source
 
 a. Clone the repository
 ```shell
-git clone https://github.com/harness-community/liquibase-mongodb-extension
-cd liquibase-mongodb-extension
-```  
-b. Build the project : `mvn clean install`
-c. The generated JAR will be available under: `target/liquibase-mongodb-dbops-extension-<version>.jar`
-
-#### 3. Move JAR file to Liquibase lib Directory
-
-Once the JAR file is available, we need place the JAR file into your Liquibase lib directory
-Based on Liquibase Installation method, the lib directory will be as follows:
-```sh
-# if liquibase is installed via liquibase website
-`<liquibase-home>/internals/lib`
-
-# if liquibase is installed via brew
-`/opt/homebrew/opt/liquibase/libexec/lib`
+git clone https://github.com/liquibase/liquibase-mongodb
+cd liquibase-mongodb
 ```
-This makes the extension available to **Liquibase CLI**.
+b. Build the project: `mvn clean install`
+c. The generated JAR will be available under: `target/liquibase-mongodb-<version>.jar`
+
+#### 3. Move the JAR into the Liquibase lib Directory
+
+Once the JAR file is available, place it in your Liquibase lib directory. Based on the Liquibase installation method, the lib directory will generally be:
+
+```sh
+# if Liquibase is installed from the Liquibase website
+<liquibase-home>/internals/lib
+
+# if Liquibase is installed via brew
+/opt/homebrew/opt/liquibase/libexec/lib
+```
+
+This makes the extension available to the **Liquibase CLI**.
 
 ---
 
 * [Run tests](#running-tests)
+
 <a name="running-tests"></a>
 ## Running tests
 
@@ -256,11 +183,11 @@ mvn clean install -Prun-its
 ```shell
 mvn clean install -Ptest-jar
 ```
-2. Go to test-project:
+2. Go to `test-project`:
 ```shell
 cd test-project
 ```
-3. Run backward compatibility test with provided 3x driver:
+3. Run backward compatibility test with the provided 3.x driver:
 ```shell
 mvn clean install -Prun-its,mongo-3x
 ```
@@ -289,7 +216,7 @@ This Harness fork includes several enhancements over the Liquibase MongoDB exten
 <a name="integration"></a>
 ## Integration
 
-### Add dependency:
+### Add dependency: 
 
 **For Harness Enhanced Version:**
 ```xml
@@ -301,6 +228,7 @@ This Harness fork includes several enhancements over the Liquibase MongoDB exten
 ```
 
 **Original Liquibase Version:**
+
 ```xml
 <dependency>
     <groupId>org.liquibase.ext</groupId>
@@ -328,4 +256,6 @@ Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for details on our code of cond
 ## License
 
 This project is licensed under the Apache License Version 2.0 - see the [LICENSE.md](LICENSE.md) file for details
+
+
 

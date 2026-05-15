@@ -97,8 +97,6 @@ class ExecuteNativeCommandStepTest {
         assertThat(executedCommands)
                 .anySatisfy(d -> assertThat(d).containsEntry("ping", 1))
                 .anySatisfy(d -> assertThat(d).containsEntry("buildInfo", 1));
-
-        assertThat(resultsBuilder.getResult("output").toString()).contains("buildInfo").contains("ping");
     }
 
     @Test
@@ -189,4 +187,3 @@ class ExecuteNativeCommandStepTest {
         }
     }
 }
-

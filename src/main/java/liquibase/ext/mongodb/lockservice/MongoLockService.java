@@ -20,9 +20,11 @@ package liquibase.ext.mongodb.lockservice;
  * #L%
  */
 
+import com.mongodb.MongoInterruptedException;
 import liquibase.Scope;
 import liquibase.database.Database;
 import liquibase.exception.DatabaseException;
+import liquibase.exception.LockException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.statement.CountCollectionByNameStatement;
 import liquibase.ext.mongodb.statement.DropCollectionStatement;
@@ -54,7 +56,7 @@ public class MongoLockService extends AbstractNoSqlLockService<MongoLiquibaseDat
 
     @Override
     public boolean supports(final Database database) {
-        return MongoLiquibaseDatabase.MONGODB_PRODUCT_NAME.equals(database.getDatabaseProductName());
+        return database instanceof MongoLiquibaseDatabase;
     }
 
     @Override
@@ -66,9 +68,26 @@ public class MongoLockService extends AbstractNoSqlLockService<MongoLiquibaseDat
 
     @Override
     protected int replaceLock(final boolean locked) throws DatabaseException {
-        return getExecutor().update(
-                new ReplaceChangeLogLockStatement(getDatabaseChangeLogLockTableName(), locked)
-        );
+        try {
+            return getExecutor().update(
+                    new ReplaceChangeLogLockStatement(getDatabaseChangeLogLockTableName(), locked)
+            );
+        } catch (DatabaseException e) {
+            // Mongo driver does not allow to release lock if thread is interrupted
+            // Next code clears interrupted flag if it is happened due to of the timeout
+            // Tries to release lock again
+            // Restore thread interrupt status
+            if (e.getCause() instanceof MongoInterruptedException && e.getCause().getSuppressed().length > 0
+                    && e.getCause().getSuppressed()[0].getMessage().equals("Interrupted waiting for lock") && Thread.interrupted()) {
+                try {
+                    releaseLock();
+                } catch (LockException ex) {
+                    throw new DatabaseException(ex);
+                }
+                Thread.currentThread().interrupt();
+            }
+            throw e;
+        }
     }
 
     @Override

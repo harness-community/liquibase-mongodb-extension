@@ -73,4 +73,5 @@
       </mongodb:options>
     </mongodb:createIndex>
   </changeSet>
+
 </databaseChangeLog>

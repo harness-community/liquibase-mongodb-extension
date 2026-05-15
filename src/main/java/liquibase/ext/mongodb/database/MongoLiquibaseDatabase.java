@@ -24,6 +24,7 @@ import com.mongodb.client.MongoDatabase;
 import liquibase.CatalogAndSchema;
 import liquibase.Scope;
 import liquibase.changelog.ChangeLogHistoryServiceFactory;
+import liquibase.exception.DatabaseException;
 import liquibase.exception.LiquibaseException;
 import liquibase.executor.Executor;
 import liquibase.executor.ExecutorService;
@@ -32,6 +33,7 @@ import liquibase.ext.mongodb.statement.DropAllCollectionsStatement;
 import liquibase.nosql.database.AbstractNoSqlDatabase;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.bson.Document;
 
 import static liquibase.nosql.executor.NoSqlExecutor.EXECUTOR_NAME;
 
@@ -71,6 +73,19 @@ public class MongoLiquibaseDatabase extends AbstractNoSqlDatabase {
     @Override
     public String getDatabaseProductName() {
         return MONGODB_PRODUCT_NAME;
+    }
+
+    @Override
+    public String getDatabaseProductVersion() {
+        String unknownVersion = "Unknown";
+        try {
+            Document document = getMongoDatabase().runCommand(new Document("buildInfo", 1));
+            String version = document.getString("version");
+            return version != null ? version : unknownVersion;
+        } catch (Exception unableToDetermineVersion) {
+            Scope.getCurrentScope().getLog(getClass()).warning("Unable to determine mongo database version!", unableToDetermineVersion);
+            return unknownVersion;
+        }
     }
 
     /**
@@ -118,5 +133,9 @@ public class MongoLiquibaseDatabase extends AbstractNoSqlDatabase {
         return MongoConfiguration.SUPPORTS_VALIDATOR.getCurrentValue();
     }
 
-
+    @Override
+    public void checkDatabaseConnection() throws DatabaseException {
+        MongoConnection.showErrorMessageIfSomeRequiredDependenciesAreNotPresent(true);
+        MongoLiquibaseDatabaseUtil.checkDatabaseAccessibility((MongoConnection) getConnection());
+    }
 }

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:mongodb="http://www.liquibase.org/xml/ns/mongodb"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd
+         http://www.liquibase.org/xml/ns/mongodb
+         http://www.liquibase.org/xml/ns/mongodb/liquibase-mongodb-latest.xsd">
+
+
+  <changeSet id="1" author="as">
+    <mongodb:createCollection collectionName="countries"/>
+  </changeSet>
+
+
+  <changeSet id="2" author="as">
+    <mongodb:insertMany collectionName="countries">
+      <mongodb:documents>
+        [
+        {
+        _id : "us",
+        name : "United States",
+        exports : {
+        foods : [
+        {name : "bacon", tasty : "true" },
+        {name : "burger"}
+        ]
+        }
+        },
+        {
+        _id : "ca",
+        name : "Canada",
+        exports : {
+        foods : [
+        {name : "bacon", tasty : false },
+        {name : "syrup", tasty : true}
+        ]
+        }
+        },
+        {
+        _id : "mx",
+        name : "Mexico",
+        exports : {
+        foods : [
+        {name : "salsa", tasty : true, condiment : true}
+        ]
+        }
+        }
+        ]
+      </mongodb:documents>
+    </mongodb:insertMany>
+
+    <rollback>
+      <mongodb:runCommand>
+        <mongodb:command>
+          {
+          delete: "countries",
+          deletes: [ { q: { }, limit: 0 } ]
+          }
+        </mongodb:command>
+      </mongodb:runCommand>
+    </rollback>
+  </changeSet>
+
+  <changeSet id="3" author="as">
+    <mongodb:createIndex collectionName="countries">
+      <mongodb:keys>
+        { name: 1, type: 1}
+      </mongodb:keys>
+      <mongodb:options>
+        {unique: true, name: "ui_countries"}
+      </mongodb:options>
+    </mongodb:createIndex>
+  </changeSet>
+
+  <changeSet id="4" author="as">
+    <mongodb:createIndex collectionName="salesData">
+      <mongodb:keys>
+        { tenantId: 1,
+        "customFields.$**": 1 }
+      </mongodb:keys>
+      <mongodb:options>
+        {name: "compoundWildcardIndex"}
+      </mongodb:options>
+    </mongodb:createIndex>
+  </changeSet>
+</databaseChangeLog>
