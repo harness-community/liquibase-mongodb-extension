@@ -1,1 +1,5 @@
 liquibase.nosql.snapshot.NoSqlSnapshotGenerator
+liquibase.ext.mongodb.snapshot.CatalogSnapshotGeneratorMongo
+liquibase.ext.mongodb.snapshot.SchemaSnapshotGeneratorMongo
+liquibase.ext.mongodb.snapshot.TableSnapshotGeneratorMongo
+liquibase.ext.mongodb.snapshot.IndexSnapshotGeneratorMongo

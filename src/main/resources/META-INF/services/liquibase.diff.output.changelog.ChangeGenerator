@@ -1,0 +1,2 @@
+liquibase.ext.mongodb.diff.output.changelog.MissingTableChangeGeneratorMongo
+liquibase.ext.mongodb.diff.output.changelog.MissingIndexChangeGeneratorMongo

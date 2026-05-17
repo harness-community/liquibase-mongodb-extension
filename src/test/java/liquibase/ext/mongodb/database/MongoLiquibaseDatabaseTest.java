@@ -8,6 +8,11 @@ import liquibase.CatalogAndSchema;
 import liquibase.database.DatabaseFactory;
 import liquibase.database.ObjectQuotingStrategy;
 import liquibase.exception.DatabaseException;
+import liquibase.structure.core.Catalog;
+import liquibase.structure.core.Column;
+import liquibase.structure.core.Index;
+import liquibase.structure.core.Schema;
+import liquibase.structure.core.Table;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -139,6 +144,28 @@ class MongoLiquibaseDatabaseTest {
         database.setDefaultCatalogName("catalog1");
         assertThat(database.getDefaultSchema()).extracting(CatalogAndSchema::getCatalogName, CatalogAndSchema::getSchemaName)
                 .containsExactly("catalog1", "catalog1");
+    }
+
+    @Test
+    void supportsObjectTypes() {
+        assertThat(database.supports(Table.class)).isTrue();
+        assertThat(database.supports(Index.class)).isTrue();
+        assertThat(database.supports(Catalog.class)).isTrue();
+        assertThat(database.supports(Schema.class)).isFalse();
+        assertThat(database.supports(Column.class)).isFalse();
+    }
+
+    @Test
+    void isLiquibaseObject() {
+        final Table changeLogTable = new Table().setName(database.getDatabaseChangeLogTableName());
+        final Table userTable = new Table().setName("users");
+        final Index changeLogIndex = new Index().setName("lock_idx").setRelation(changeLogTable);
+        final Index userIndex = new Index().setName("users_idx").setRelation(userTable);
+
+        assertThat(database.isLiquibaseObject(changeLogTable)).isTrue();
+        assertThat(database.isLiquibaseObject(changeLogIndex)).isTrue();
+        assertThat(database.isLiquibaseObject(userTable)).isFalse();
+        assertThat(database.isLiquibaseObject(userIndex)).isFalse();
     }
 
     @SneakyThrows

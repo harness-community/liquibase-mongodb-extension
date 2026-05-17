@@ -31,6 +31,11 @@ import liquibase.executor.ExecutorService;
 import liquibase.ext.mongodb.configuration.MongoConfiguration;
 import liquibase.ext.mongodb.statement.DropAllCollectionsStatement;
 import liquibase.nosql.database.AbstractNoSqlDatabase;
+import liquibase.structure.DatabaseObject;
+import liquibase.structure.core.Catalog;
+import liquibase.structure.core.Index;
+import liquibase.structure.core.Schema;
+import liquibase.structure.core.Table;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.bson.Document;
@@ -112,6 +117,32 @@ public class MongoLiquibaseDatabase extends AbstractNoSqlDatabase {
         return ADMIN_DATABASE_NAME;
     }
 
+    @Override
+    public boolean supports(final Class<? extends DatabaseObject> object) {
+        if (Catalog.class.isAssignableFrom(object)) {
+            return supportsCatalogs();
+        }
+        if (Schema.class.isAssignableFrom(object)) {
+            return supportsSchemas();
+        }
+
+        return Table.class.isAssignableFrom(object) || Index.class.isAssignableFrom(object);
+    }
+
+    @Override
+    public boolean isLiquibaseObject(final DatabaseObject object) {
+        if (object instanceof Table) {
+            return isLiquibaseCollection(((Table) object).getName());
+        }
+
+        if (object instanceof Index) {
+            return (((Index) object).getRelation() != null)
+                    && isLiquibaseCollection(((Index) object).getRelation().getName());
+        }
+
+        return false;
+    }
+
     /*********************************
      * Custom Parameters
      *********************************/
@@ -131,6 +162,15 @@ public class MongoLiquibaseDatabase extends AbstractNoSqlDatabase {
         }
 
         return MongoConfiguration.SUPPORTS_VALIDATOR.getCurrentValue();
+    }
+
+    private boolean isLiquibaseCollection(final String collectionName) {
+        if (collectionName == null) {
+            return false;
+        }
+
+        return collectionName.equalsIgnoreCase(getDatabaseChangeLogTableName())
+                || collectionName.equalsIgnoreCase(getDatabaseChangeLogLockTableName());
     }
 
     @Override
