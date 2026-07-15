@@ -11,7 +11,6 @@ import java.util.Collection;
 import java.util.Date;
 
 import static java.util.Optional.ofNullable;
-import static liquibase.sqlgenerator.core.MarkChangeSetRanGenerator.*;
 
 public class MongoRanChangeSetToDocumentConverter extends AbstractNoSqlItemToDocumentConverter<MongoRanChangeSet, Document> {
 
@@ -60,9 +59,40 @@ public class MongoRanChangeSetToDocumentConverter extends AbstractNoSqlItemToDoc
                 null,
                 new Labels((String)document.get(MongoRanChangeSet.Fields.labels)),
                 (String) document.get(MongoRanChangeSet.Fields.deploymentId),
-                (Integer) ofNullable(document.get(MongoRanChangeSet.Fields.orderExecuted)).orElse(null),
+                convertToInteger(document.get(MongoRanChangeSet.Fields.orderExecuted)),
                 (String) document.get(MongoRanChangeSet.Fields.liquibase)
         );
+    }
+
+    /**
+     * Converts BSON numeric values to Integer with overflow protection.
+     *
+     * @param value BSON value (Integer, Long, Double, etc.)
+     * @return Integer value or null
+     * @throws IllegalStateException if value exceeds Integer range or is non-numeric
+     */
+    private Integer convertToInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        if (!(value instanceof Number)) {
+            throw new IllegalStateException(
+                String.format("orderExecuted has invalid type %s (value: %s)",
+                    value.getClass().getName(), value)
+            );
+        }
+        long longValue = ((Number) value).longValue();
+        if (longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE) {
+            throw new IllegalStateException(
+                String.format("orderExecuted value %d exceeds Integer range [%d, %d]",
+                    longValue, Integer.MIN_VALUE, Integer.MAX_VALUE)
+            );
+        }
+        
+        return (int) longValue;
     }
 
     /**
