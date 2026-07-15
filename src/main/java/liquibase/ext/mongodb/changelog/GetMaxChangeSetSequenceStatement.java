@@ -62,8 +62,24 @@ public class GetMaxChangeSetSequenceStatement extends AbstractCollectionStatemen
     public long queryForLong(final MongoLiquibaseDatabase database) {
         final Document max = database.getMongoDatabase().getCollection(getCollectionName())
                 .find().sort(Sorts.descending(MongoRanChangeSet.Fields.orderExecuted)).limit(1).first();
-        return ofNullable(max).map(d->(long)d.getInteger(MongoRanChangeSet.Fields.orderExecuted))
+        
+        return ofNullable(max)
+                .map(d -> extractOrderExecuted(d))
                 .orElse(0L);
+    }
+
+    private long extractOrderExecuted(Document document) {
+        Object value = document.get(MongoRanChangeSet.Fields.orderExecuted);
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        throw new IllegalStateException(
+            String.format("orderExecuted has invalid type %s (value: %s)",
+                value.getClass().getName(), value)
+        );
     }
 
 }
