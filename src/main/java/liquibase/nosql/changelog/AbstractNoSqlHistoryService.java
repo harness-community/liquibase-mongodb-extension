@@ -33,6 +33,7 @@ import liquibase.executor.LoggingExecutor;
 import liquibase.logging.Logger;
 import liquibase.nosql.database.AbstractNoSqlDatabase;
 import liquibase.nosql.executor.NoSqlExecutor;
+import liquibase.nosql.executor.NoSqlLoggingExecutorUnwrapper;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -95,6 +96,7 @@ public abstract class AbstractNoSqlHistoryService<D extends AbstractNoSqlDatabas
 
     public NoSqlExecutor getExecutor() throws DatabaseException {
         Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor(NoSqlExecutor.EXECUTOR_NAME, getDatabase());
+        executor = NoSqlLoggingExecutorUnwrapper.unwrapIfLogging(executor);
         if (executor instanceof LoggingExecutor) {
             throw new DatabaseException(String.format(mongoBundle.getString("command.unsupported"), "*sql"));
         }
