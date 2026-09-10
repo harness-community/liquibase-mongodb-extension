@@ -25,8 +25,8 @@ import static liquibase.plugin.Plugin.PRIORITY_SPECIALIZED;
  * snapshot generators fail with a confusing ClassCastException on the non-JDBC connection.
  * <p>
  * {@link Catalog}, {@link Schema}, {@link Collection}, and {@link Index} are excluded from the blanket claim:
- * Catalog/Schema resolve to Mongo's default database without touching JDBC (see the Mongo-specific
- * CatalogSnapshotGenerator and core's own SchemaSnapshotGenerator), and Collection/Index are snapshotted by this
+ * Catalog/Schema resolve to Mongo's default database without touching JDBC (see this extension's own
+ * MongoCatalogSnapshotGenerator and MongoSchemaSnapshotGenerator), and Collection/Index are snapshotted by this
  * extension's own generators to support {@code generateChangelog}.
  */
 public class NoSqlSnapshotGenerator implements SnapshotGenerator {

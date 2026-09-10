@@ -1,10 +1,33 @@
 package liquibase.ext.mongodb.snapshot;
 
+/*-
+ * #%L
+ * Liquibase MongoDB Extension
+ * %%
+ * Copyright (C) 2019 Mastercard
+ * %%
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * #L%
+ */
+
+import com.mongodb.MongoException;
 import com.mongodb.client.MongoDatabase;
+import liquibase.Scope;
 import liquibase.database.Database;
 import liquibase.exception.DatabaseException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.structure.Collection;
+import liquibase.logging.Logger;
 import liquibase.snapshot.DatabaseSnapshot;
 import liquibase.snapshot.InvalidExampleException;
 import liquibase.snapshot.SnapshotGenerator;
@@ -13,12 +36,10 @@ import liquibase.structure.DatabaseObject;
 import liquibase.structure.core.Schema;
 import org.bson.Document;
 
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
-
-import static liquibase.plugin.Plugin.PRIORITY_ADDITIONAL;
-import static liquibase.plugin.Plugin.PRIORITY_DEFAULT;
-import static liquibase.plugin.Plugin.PRIORITY_NONE;
 
 /**
  * Snapshots Mongo collections so that they participate in Liquibase's {@code generateChangelog}/{@code diff}
@@ -28,14 +49,14 @@ import static liquibase.plugin.Plugin.PRIORITY_NONE;
  */
 public class CollectionSnapshotGenerator implements SnapshotGenerator {
 
-    private static final Set<String> SKIPPED_COLLECTION_NAMES = new HashSet<>();
-
-    static {
-        SKIPPED_COLLECTION_NAMES.add("DATABASECHANGELOG");
-        SKIPPED_COLLECTION_NAMES.add("DATABASECHANGELOGLOCK");
-    }
-
     private static final String SYSTEM_COLLECTION_PREFIX = "system.";
+    // Only these types are emitted; "view" and any other/unrecognized type is skipped. Missing type
+    // (older/simple collections) is treated as included.
+    private static final Set<String> INCLUDED_TYPES = new HashSet<>(Arrays.asList("collection", "timeseries"));
+
+    private static Logger log() {
+        return Scope.getCurrentScope().getLog(CollectionSnapshotGenerator.class);
+    }
 
     @Override
     public int getPriority(Class<? extends DatabaseObject> objectType, Database database) {
@@ -90,32 +111,49 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
     }
 
     private Collection snapshotCollection(Collection example, DatabaseSnapshot snapshot) {
-        final MongoDatabase mongoDatabase = ((MongoLiquibaseDatabase) snapshot.getDatabase()).getMongoDatabase();
-        for (Document collectionInfo : mongoDatabase.listCollections()) {
-            final String collectionName = collectionInfo.getString("name");
-            if (!collectionName.equalsIgnoreCase(example.getName()) || shouldSkip(collectionName, collectionInfo)) {
-                continue;
+        final MongoLiquibaseDatabase database = (MongoLiquibaseDatabase) snapshot.getDatabase();
+        final MongoDatabase mongoDatabase = database.getMongoDatabase();
+        try {
+            for (Document collectionInfo : mongoDatabase.listCollections()) {
+                final String collectionName = collectionInfo.getString("name");
+                if (!Objects.equals(collectionName, example.getName()) || shouldSkip(collectionName, collectionInfo, database)) {
+                    continue;
+                }
+                return new Collection(collectionName, example.getSchema())
+                        .setOptions(collectionInfo.get("options", Document.class));
             }
-            return new Collection(collectionName, example.getSchema())
-                    .setOptions(collectionInfo.get("options", Document.class));
+        } catch (MongoException e) {
+            log().warning("Unable to list collections while snapshotting '" + example.getName() + "', skipping", e);
         }
         return null;
     }
 
     private void addTo(Schema schema, DatabaseSnapshot snapshot) {
-        final MongoDatabase mongoDatabase = ((MongoLiquibaseDatabase) snapshot.getDatabase()).getMongoDatabase();
-        for (Document collectionInfo : mongoDatabase.listCollections()) {
-            final String collectionName = collectionInfo.getString("name");
-            if (shouldSkip(collectionName, collectionInfo)) {
-                continue;
+        final MongoLiquibaseDatabase database = (MongoLiquibaseDatabase) snapshot.getDatabase();
+        final MongoDatabase mongoDatabase = database.getMongoDatabase();
+        try {
+            for (Document collectionInfo : mongoDatabase.listCollections()) {
+                final String collectionName = collectionInfo.getString("name");
+                if (shouldSkip(collectionName, collectionInfo, database)) {
+                    continue;
+                }
+                schema.addDatabaseObject(new Collection(collectionName, schema));
             }
-            schema.addDatabaseObject(new Collection(collectionName, schema));
+        } catch (MongoException e) {
+            log().warning("Unable to list collections, skipping", e);
         }
     }
 
-    private boolean shouldSkip(String collectionName, Document collectionInfo) {
-        return SKIPPED_COLLECTION_NAMES.contains(collectionName)
-                || collectionName.startsWith(SYSTEM_COLLECTION_PREFIX)
-                || !"collection".equals(collectionInfo.getString("type"));
+    private boolean shouldSkip(String collectionName, Document collectionInfo, Database database) {
+        if (collectionName == null) {
+            return true;
+        }
+        if (collectionName.equals(database.getDatabaseChangeLogTableName())
+                || collectionName.equals(database.getDatabaseChangeLogLockTableName())
+                || collectionName.startsWith(SYSTEM_COLLECTION_PREFIX)) {
+            return true;
+        }
+        final String type = collectionInfo.getString("type");
+        return type != null && !INCLUDED_TYPES.contains(type);
     }
 }

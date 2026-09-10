@@ -141,6 +141,26 @@ class MongoLiquibaseDatabaseTest {
                 .containsExactly("catalog1", "catalog1");
     }
 
+    @Test
+    void supportsMongoCollectionAndIndex() {
+        assertThat(database.supports(liquibase.ext.mongodb.structure.Collection.class)).isTrue();
+        assertThat(database.supports(liquibase.ext.mongodb.structure.Index.class)).isTrue();
+    }
+
+    @Test
+    void supportsCatalogButNotSchema() {
+        assertThat(database.supports(liquibase.structure.core.Catalog.class)).isTrue();
+        assertThat(database.supports(liquibase.structure.core.Schema.class)).isFalse();
+    }
+
+    @Test
+    void doesNotSupportJdbcOnlyTypes() {
+        assertThat(database.supports(liquibase.structure.core.Table.class)).isFalse();
+        assertThat(database.supports(liquibase.structure.core.View.class)).isFalse();
+        assertThat(database.supports(liquibase.structure.core.Index.class)).isFalse();
+        assertThat(database.supports(liquibase.structure.core.Column.class)).isFalse();
+    }
+
     @SneakyThrows
     @Test
     void checkDatabaseConnection() {

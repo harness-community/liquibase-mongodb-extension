@@ -30,7 +30,11 @@ import liquibase.executor.Executor;
 import liquibase.executor.ExecutorService;
 import liquibase.ext.mongodb.configuration.MongoConfiguration;
 import liquibase.ext.mongodb.statement.DropAllCollectionsStatement;
+import liquibase.ext.mongodb.structure.Collection;
+import liquibase.ext.mongodb.structure.Index;
 import liquibase.nosql.database.AbstractNoSqlDatabase;
+import liquibase.structure.DatabaseObject;
+import liquibase.structure.core.Catalog;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.bson.Document;
@@ -49,6 +53,22 @@ public class MongoLiquibaseDatabase extends AbstractNoSqlDatabase {
 
     @Setter
     private Boolean supportsValidator;
+
+    /**
+     * Default {@code Database.supports()} returns true for any type it doesn't explicitly recognize (Table, View,
+     * core Index, Column, PK/FK, etc.), which are all JDBC-only concepts that don't apply to Mongo. Restrict to the
+     * types this extension actually snapshots/diffs.
+     */
+    @Override
+    public boolean supports(final Class<? extends DatabaseObject> object) {
+        if (Collection.class.isAssignableFrom(object) || Index.class.isAssignableFrom(object)) {
+            return true;
+        }
+        if (Catalog.class.isAssignableFrom(object)) {
+            return supportsCatalogs();
+        }
+        return false;
+    }
 
     @Override
     public void dropDatabaseObjects(final CatalogAndSchema schemaToDrop) throws LiquibaseException {
