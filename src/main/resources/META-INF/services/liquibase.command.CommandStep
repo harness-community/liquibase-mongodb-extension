@@ -1,2 +1,3 @@
 liquibase.ext.mongodb.command.ExecuteNativeCommandStep
+liquibase.ext.mongodb.command.MongoGenerateChangelogCommandStep
 
