@@ -4,7 +4,7 @@ package liquibase.ext;
  * #%L
  * Liquibase MongoDB Extension
  * %%
- * Copyright (C) 2019 Mastercard
+ * Copyright (C) 2026 Mastercard
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -76,6 +76,31 @@ class MongoGenerateChangelogIT extends AbstractMongoIntegrationTest {
         final int bIndex = content.indexOf("\"b\"");
         assertThat(aIndex).isGreaterThan(-1);
         assertThat(bIndex).isGreaterThan(aIndex);
+    }
+
+    @SneakyThrows
+    @Test
+    void generateChangelogKeepsSameDefaultIndexNameOnDifferentCollections() {
+        mongoDatabase.createCollection("users");
+        mongoDatabase.getCollection("users").createIndex(Indexes.ascending("email"));
+        mongoDatabase.createCollection("orders");
+        mongoDatabase.getCollection("orders").createIndex(Indexes.ascending("email"));
+
+        final Path changelogFile = tempDir.resolve("shared-index-name-changelog.yaml");
+        runGenerateChangelog(changelogFile);
+
+        final String content = Files.readString(changelogFile);
+        assertThat(content).contains("createCollection").contains("users").contains("orders");
+
+        final int firstEmailIndex = content.indexOf("email_1");
+        final int secondEmailIndex = content.indexOf("email_1", firstEmailIndex + 1);
+        assertThat(firstEmailIndex).isGreaterThan(-1);
+        assertThat(secondEmailIndex).isGreaterThan(firstEmailIndex);
+
+        assertThat(content)
+                .contains("collectionName: users")
+                .contains("collectionName: orders");
+        assertThat(content.split("createIndex", -1).length - 1).isEqualTo(2);
     }
 
     @SneakyThrows

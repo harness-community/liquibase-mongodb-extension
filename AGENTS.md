@@ -7,6 +7,7 @@ This is the Liquibase MongoDB Extension, a Harness-enhanced fork that provides M
 - **Mongosh-backed executor** for inline and file-based shell scripts (`mongo` and `mongoFile` changes)
 - **executeNative command** for arbitrary MongoDB JSON commands
 - **mongoIndexExists precondition** for safer index management
+- **Native `generate-changelog`** for MongoDB via SnapshotGenerator / ChangeGenerator SPI (`createCollection` / `createIndex`; views skipped)
 
 The project extends Liquibase's NoSQL support with MongoDB-specific implementations.
 
@@ -96,6 +97,9 @@ liquibase-mongodb/
 │   │   │   │   │   ├── command/          # Custom commands (executeNative, etc.)
 │   │   │   │   │   ├── configuration/    # MongoDB connection configuration
 │   │   │   │   │   ├── database/         # MongoDB database implementation
+│   │   │   │   │   ├── snapshot/         # Collection/Index/Catalog/Schema snapshot generators (generate-changelog)
+│   │   │   │   │   ├── diff/             # MissingObject change generators (createCollection / createIndex)
+│   │   │   │   │   ├── structure/        # Mongo DatabaseObject types (Collection, Index)
 │   │   │   │   │   ├── lockservice/      # Database lock service for MongoDB
 │   │   │   │   │   ├── precondition/     # MongoDB preconditions (mongoIndexExists, etc.)
 │   │   │   │   │   ├── statement/        # MongoDB statement implementations
@@ -134,6 +138,7 @@ Based on the project structure and purpose:
 - **`src/main/java/liquibase/ext/mongodb/command/`** - Custom commands (executeNative, etc.)
 - **`src/main/java/liquibase/nosql/executor/`** - Mongosh executor for shell script execution
 - **`src/main/java/liquibase/ext/mongodb/precondition/`** - Custom preconditions (mongoIndexExists)
+- **`src/main/java/liquibase/ext/mongodb/snapshot/`** + **`diff/`** + **`structure/`** - Core `generate-changelog` for Mongo (no Mongo-only command name)
 
 ### Infrastructure
 - **`src/main/java/liquibase/nosql/`** - Generic NoSQL support layer that MongoDB extends

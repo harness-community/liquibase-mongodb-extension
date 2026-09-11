@@ -4,7 +4,7 @@ package liquibase.ext.mongodb.structure;
  * #%L
  * Liquibase MongoDB Extension
  * %%
- * Copyright (C) 2019 Mastercard
+ * Copyright (C) 2026 Mastercard
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -46,6 +46,11 @@ public class Index extends AbstractDatabaseObject {
         return this;
     }
 
+    /**
+     * Mongo schema is the database, not the parent collection. Identity is collection+name via
+     * {@link liquibase.ext.mongodb.diff.compare.IndexComparator} — default name+schema hashing would
+     * collapse {@code users.email_1} and {@code orders.email_1}.
+     */
     @Override
     public Schema getSchema() {
         return getCollection() == null ? null : getCollection().getSchema();
@@ -91,6 +96,20 @@ public class Index extends AbstractDatabaseObject {
     public Index setUnique(boolean unique) {
         setAttribute("unique", unique);
         return this;
+    }
+
+    /**
+     * DiffToChangeLog unique-ifies missing objects with a TreeSet on name, then {@code toString()}.
+     * Default {@code toString()} is just the index name, which would drop {@code orders.email_1} when
+     * {@code users.email_1} is already present. Include the collection so both survive.
+     */
+    @Override
+    public String toString() {
+        final Collection collection = getCollection();
+        if (collection == null || collection.getName() == null) {
+            return getName();
+        }
+        return collection.getName() + "." + getName();
     }
 
     @Override

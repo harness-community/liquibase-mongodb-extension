@@ -4,7 +4,7 @@ package liquibase.ext.mongodb.snapshot;
  * #%L
  * Liquibase MongoDB Extension
  * %%
- * Copyright (C) 2019 Mastercard
+ * Copyright (C) 2026 Mastercard
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ package liquibase.ext.mongodb.snapshot;
 import com.mongodb.client.ListCollectionsIterable;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
+import liquibase.exception.DatabaseException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.structure.Collection;
 import liquibase.snapshot.DatabaseSnapshot;
@@ -41,6 +42,7 @@ import static liquibase.snapshot.SnapshotGenerator.PRIORITY_ADDITIONAL;
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_DEFAULT;
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_NONE;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -217,28 +219,27 @@ class CollectionSnapshotGeneratorTest {
     }
 
     @Test
-    void addToSwallowsMongoExceptionFromListCollections() throws Exception {
+    void addToPropagatesMongoExceptionFromListCollections() {
         when(mongoDatabase.listCollections()).thenThrow(new com.mongodb.MongoException("boom"));
         when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
 
         final liquibase.structure.core.Schema schema = new liquibase.structure.core.Schema();
-        generator.snapshot(schema, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
+        assertThatThrownBy(() -> generator.snapshot(schema, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
             @Override
             public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
                 return example;
             }
-        });
-
-        assertThat(schema.getDatabaseObjects(Collection.class)).isEmpty();
+        })).isInstanceOf(DatabaseException.class)
+                .hasMessageContaining("Unable to list collections");
     }
 
     @Test
-    void snapshotCollectionSwallowsMongoExceptionFromListCollections() throws Exception {
+    void snapshotCollectionPropagatesMongoExceptionFromListCollections() {
         when(mongoDatabase.listCollections()).thenThrow(new com.mongodb.MongoException("boom"));
 
         final Collection example = new Collection("users", null);
-        final Collection result = generator.snapshot(example, databaseSnapshot, null);
-
-        assertThat(result).isNull();
+        assertThatThrownBy(() -> generator.snapshot(example, databaseSnapshot, null))
+                .isInstanceOf(DatabaseException.class)
+                .hasMessageContaining("Unable to list collections while snapshotting 'users'");
     }
 }

@@ -4,7 +4,7 @@ package liquibase.ext.mongodb.diff;
  * #%L
  * Liquibase MongoDB Extension
  * %%
- * Copyright (C) 2019 Mastercard
+ * Copyright (C) 2026 Mastercard
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ package liquibase.ext.mongodb.diff;
 
 import liquibase.change.Change;
 import liquibase.diff.output.DiffOutputControl;
+import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.ext.mongodb.change.CreateIndexChange;
 import liquibase.ext.mongodb.structure.Collection;
 import liquibase.ext.mongodb.structure.Index;
@@ -29,6 +30,7 @@ import org.bson.Document;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MissingIndexChangeGeneratorTest {
 
@@ -111,5 +113,26 @@ class MissingIndexChangeGeneratorTest {
 
         final CreateIndexChange change = (CreateIndexChange) changes[0];
         assertThat(change.getOptions()).contains("\"name\": \"plain_idx\"");
+    }
+
+    @Test
+    void fixMissingRejectsNullKeys() {
+        final Index index = new Index("broken_idx", collection);
+
+        assertThatThrownBy(() -> generator.fixMissing(index, new DiffOutputControl(), null, null, null))
+                .isInstanceOf(UnexpectedLiquibaseException.class)
+                .hasMessageContaining("broken_idx")
+                .hasMessageContaining("orders")
+                .hasMessageContaining("index keys are missing");
+    }
+
+    @Test
+    void fixMissingRejectsEmptyKeys() {
+        final Index index = new Index("empty_idx", collection).setKeys(new Document());
+
+        assertThatThrownBy(() -> generator.fixMissing(index, new DiffOutputControl(), null, null, null))
+                .isInstanceOf(UnexpectedLiquibaseException.class)
+                .hasMessageContaining("empty_idx")
+                .hasMessageContaining("index keys are missing");
     }
 }

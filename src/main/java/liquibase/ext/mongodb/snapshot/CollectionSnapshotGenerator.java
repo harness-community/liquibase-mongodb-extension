@@ -4,7 +4,7 @@ package liquibase.ext.mongodb.snapshot;
  * #%L
  * Liquibase MongoDB Extension
  * %%
- * Copyright (C) 2019 Mastercard
+ * Copyright (C) 2026 Mastercard
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -22,12 +22,10 @@ package liquibase.ext.mongodb.snapshot;
 
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoDatabase;
-import liquibase.Scope;
 import liquibase.database.Database;
 import liquibase.exception.DatabaseException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.structure.Collection;
-import liquibase.logging.Logger;
 import liquibase.snapshot.DatabaseSnapshot;
 import liquibase.snapshot.InvalidExampleException;
 import liquibase.snapshot.SnapshotGenerator;
@@ -42,10 +40,10 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Snapshots Mongo collections so that they participate in Liquibase's {@code generateChangelog}/{@code diff}
- * machinery like any other {@link DatabaseObject} type. Mirrors core's TableSnapshotGenerator pattern: it is the
- * default generator for {@link Collection} and additionally attaches itself to {@link Schema} so that snapshotting
- * a schema also enumerates its collections.
+ * generate-changelog / diff lifecycle: core snapshots the default Schema, this generator then lists
+ * Mongo collections onto that Schema (same role as TableSnapshotGenerator on SQL). Each Collection is
+ * later re-snapshotted so options (validator, etc.) are filled in; IndexSnapshotGenerator attaches
+ * indexes. MissingCollectionChangeGenerator turns each missing Collection into createCollection.
  */
 public class CollectionSnapshotGenerator implements SnapshotGenerator {
 
@@ -54,10 +52,11 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
     // (older/simple collections) is treated as included.
     private static final Set<String> INCLUDED_TYPES = new HashSet<>(Arrays.asList("collection", "timeseries"));
 
-    private static Logger log() {
-        return Scope.getCurrentScope().getLog(CollectionSnapshotGenerator.class);
-    }
-
+    /**
+     * This JAR is Mongo-only, but SnapshotGenerator is a global SPI. We also attach to Schema
+     * (PRIORITY_ADDITIONAL); without the Mongo database guard that would run on JDBC Schema snapshots
+     * if this JAR were on a mixed classpath.
+     */
     @Override
     public int getPriority(Class<? extends DatabaseObject> objectType, Database database) {
         if (!(database instanceof MongoLiquibaseDatabase)) {
@@ -110,7 +109,7 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
         return (T) chainResponse;
     }
 
-    private Collection snapshotCollection(Collection example, DatabaseSnapshot snapshot) {
+    private Collection snapshotCollection(Collection example, DatabaseSnapshot snapshot) throws DatabaseException {
         final MongoLiquibaseDatabase database = (MongoLiquibaseDatabase) snapshot.getDatabase();
         final MongoDatabase mongoDatabase = database.getMongoDatabase();
         try {
@@ -123,12 +122,12 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
                         .setOptions(collectionInfo.get("options", Document.class));
             }
         } catch (MongoException e) {
-            log().warning("Unable to list collections while snapshotting '" + example.getName() + "', skipping", e);
+            throw new DatabaseException("Unable to list collections while snapshotting '" + example.getName() + "'", e);
         }
         return null;
     }
 
-    private void addTo(Schema schema, DatabaseSnapshot snapshot) {
+    private void addTo(Schema schema, DatabaseSnapshot snapshot) throws DatabaseException {
         final MongoLiquibaseDatabase database = (MongoLiquibaseDatabase) snapshot.getDatabase();
         final MongoDatabase mongoDatabase = database.getMongoDatabase();
         try {
@@ -140,7 +139,7 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
                 schema.addDatabaseObject(new Collection(collectionName, schema));
             }
         } catch (MongoException e) {
-            log().warning("Unable to list collections, skipping", e);
+            throw new DatabaseException("Unable to list collections", e);
         }
     }
 

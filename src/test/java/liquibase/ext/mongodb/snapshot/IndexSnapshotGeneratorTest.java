@@ -4,7 +4,7 @@ package liquibase.ext.mongodb.snapshot;
  * #%L
  * Liquibase MongoDB Extension
  * %%
- * Copyright (C) 2019 Mastercard
+ * Copyright (C) 2026 Mastercard
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import com.mongodb.client.ListIndexesIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
+import liquibase.exception.DatabaseException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.structure.Collection;
 import liquibase.ext.mongodb.structure.Index;
@@ -44,6 +45,7 @@ import static liquibase.snapshot.SnapshotGenerator.PRIORITY_ADDITIONAL;
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_DEFAULT;
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_NONE;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -150,27 +152,26 @@ class IndexSnapshotGeneratorTest {
     }
 
     @Test
-    void addToSwallowsMongoExceptionFromListIndexes() throws Exception {
+    void addToPropagatesMongoExceptionFromListIndexes() {
         when(mongoCollection.listIndexes()).thenThrow(new com.mongodb.MongoException("boom"));
         when(snapshotControl.shouldInclude(Index.class)).thenReturn(true);
 
-        generator.snapshot(collection, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
+        assertThatThrownBy(() -> generator.snapshot(collection, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
             @Override
             public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
                 return example;
             }
-        });
-
-        assertThat(collection.getDatabaseObjects(Index.class)).isEmpty();
+        })).isInstanceOf(DatabaseException.class)
+                .hasMessageContaining("Unable to list indexes for collection");
     }
 
     @Test
-    void snapshotIndexSwallowsMongoExceptionFromListIndexes() throws Exception {
+    void snapshotIndexPropagatesMongoExceptionFromListIndexes() {
         when(mongoCollection.listIndexes()).thenThrow(new com.mongodb.MongoException("boom"));
 
         final Index example = new Index("email_idx", collection);
-        final Index result = generator.snapshot(example, databaseSnapshot, null);
-
-        assertThat(result).isNull();
+        assertThatThrownBy(() -> generator.snapshot(example, databaseSnapshot, null))
+                .isInstanceOf(DatabaseException.class)
+                .hasMessageContaining("Unable to list indexes for collection");
     }
 }

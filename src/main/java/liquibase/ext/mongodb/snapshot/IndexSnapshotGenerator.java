@@ -4,7 +4,7 @@ package liquibase.ext.mongodb.snapshot;
  * #%L
  * Liquibase MongoDB Extension
  * %%
- * Copyright (C) 2019 Mastercard
+ * Copyright (C) 2026 Mastercard
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -22,13 +22,11 @@ package liquibase.ext.mongodb.snapshot;
 
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoDatabase;
-import liquibase.Scope;
 import liquibase.database.Database;
 import liquibase.exception.DatabaseException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.structure.Collection;
 import liquibase.ext.mongodb.structure.Index;
-import liquibase.logging.Logger;
 import liquibase.snapshot.DatabaseSnapshot;
 import liquibase.snapshot.InvalidExampleException;
 import liquibase.snapshot.SnapshotGenerator;
@@ -37,17 +35,18 @@ import liquibase.structure.DatabaseObject;
 import org.bson.Document;
 
 /**
- * Snapshots Mongo indexes, attaching itself to {@link Collection} the same way CollectionSnapshotGenerator
- * attaches itself to Schema, so that snapshotting a collection also enumerates its indexes.
+ * generate-changelog / diff lifecycle: after a Collection is snapshotted, this generator lists its
+ * indexes onto that Collection (same role as IndexSnapshotGenerator attaching to Table on SQL).
+ * MissingIndexChangeGenerator then emits createIndex, ordered after createCollection via runAfterTypes.
  */
 public class IndexSnapshotGenerator implements SnapshotGenerator {
 
     private static final String ID_INDEX_NAME = "_id_";
 
-    private static Logger log() {
-        return Scope.getCurrentScope().getLog(IndexSnapshotGenerator.class);
-    }
-
+    /**
+     * Same mixed-classpath guard as CollectionSnapshotGenerator: we attach to Collection with
+     * PRIORITY_ADDITIONAL, so only run when the target database is Mongo.
+     */
     @Override
     public int getPriority(Class<? extends DatabaseObject> objectType, Database database) {
         if (!(database instanceof MongoLiquibaseDatabase)) {
@@ -93,35 +92,35 @@ public class IndexSnapshotGenerator implements SnapshotGenerator {
         return (T) chainResponse;
     }
 
-    private Index snapshotIndex(Index example, DatabaseSnapshot snapshot) {
-        final MongoDatabase mongoDatabase = ((MongoLiquibaseDatabase) snapshot.getDatabase()).getMongoDatabase();
+    private Index snapshotIndex(Index example, DatabaseSnapshot snapshot) throws DatabaseException {
         final Collection collection = example.getCollection();
+        final MongoDatabase mongoDatabase = ((MongoLiquibaseDatabase) snapshot.getDatabase()).getMongoDatabase();
         try {
             for (Document indexInfo : mongoDatabase.getCollection(collection.getName()).listIndexes()) {
                 final String indexName = indexInfo.getString("name");
-                if (!indexName.equals(example.getName()) || ID_INDEX_NAME.equals(indexName)) {
+                if (indexName == null || !indexName.equals(example.getName()) || ID_INDEX_NAME.equals(indexName)) {
                     continue;
                 }
                 return toIndex(indexInfo, collection);
             }
         } catch (MongoException e) {
-            log().warning("Unable to list indexes for collection '" + collection.getName() + "', skipping", e);
+            throw new DatabaseException("Unable to list indexes for collection '" + collection.getName() + "'", e);
         }
         return null;
     }
 
-    private void addTo(Collection collection, DatabaseSnapshot snapshot) {
+    private void addTo(Collection collection, DatabaseSnapshot snapshot) throws DatabaseException {
         final MongoDatabase mongoDatabase = ((MongoLiquibaseDatabase) snapshot.getDatabase()).getMongoDatabase();
         try {
             for (Document indexInfo : mongoDatabase.getCollection(collection.getName()).listIndexes()) {
                 final String indexName = indexInfo.getString("name");
-                if (ID_INDEX_NAME.equals(indexName)) {
+                if (indexName == null || ID_INDEX_NAME.equals(indexName)) {
                     continue;
                 }
                 collection.addDatabaseObject(toIndex(indexInfo, collection));
             }
         } catch (MongoException e) {
-            log().warning("Unable to list indexes for collection '" + collection.getName() + "', skipping", e);
+            throw new DatabaseException("Unable to list indexes for collection '" + collection.getName() + "'", e);
         }
     }
 

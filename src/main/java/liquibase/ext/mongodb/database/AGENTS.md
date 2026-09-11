@@ -14,7 +14,7 @@ This is the entry point that Liquibase uses to interact with MongoDB.
 
 ## Key Files
 
-- `MongoLiquibaseDatabase.java` - Main database facade implementing Liquibase's Database interface
+- `MongoLiquibaseDatabase.java` - Main database facade implementing Liquibase's Database interface. Overrides `supports(Class)` so snapshot/diff only include mongo Collection, mongo Index, and Catalog (needed for core `generate-changelog`).
 - `MongoConnection.java` - MongoDB connection wrapper managing MongoClient and database instances
 - `MongoClientDriver.java` - JDBC-style driver for MongoDB (Liquibase compatibility layer)
 - `MongoConnectionStringParser.java` - Parses MongoDB connection strings (standard and DNS seed list formats)

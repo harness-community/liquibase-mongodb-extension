@@ -4,7 +4,7 @@ package liquibase.ext.mongodb.diff;
  * #%L
  * Liquibase MongoDB Extension
  * %%
- * Copyright (C) 2019 Mastercard
+ * Copyright (C) 2026 Mastercard
  * %%
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import liquibase.diff.output.DiffOutputControl;
 import liquibase.diff.output.changelog.AbstractChangeGenerator;
 import liquibase.diff.output.changelog.ChangeGeneratorChain;
 import liquibase.diff.output.changelog.MissingObjectChangeGenerator;
+import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.ext.mongodb.change.CreateIndexChange;
 import liquibase.ext.mongodb.structure.Index;
 import liquibase.structure.DatabaseObject;
@@ -36,11 +37,16 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * generate-changelog / diff lifecycle: each missing {@link Index} becomes a {@link CreateIndexChange}.
+ * {@link #runAfterTypes()} puts these after createCollection so replay creates the collection first.
+ */
 public class MissingIndexChangeGenerator extends AbstractChangeGenerator implements MissingObjectChangeGenerator {
 
-    // Fields accepted by MongoDB's createIndexes command (besides key/name, handled separately below).
-    // Includes legacy 2d-index options (bits/min/max) and the newer prepareUnique option.
-    // Excludes internal listIndexes metadata such as v, ns, textIndexVersion, 2dsphereIndexVersion, background.
+    // createIndexes-accepted options (plus name, always set below). Started from the workaround script's
+    // denylist (key/v/ns) and switched to a whitelist so listIndexes internals — textIndexVersion,
+    // 2dsphereIndexVersion, background — are not copied into a changelog that cannot replay.
+    // See https://www.mongodb.com/docs/manual/reference/command/createIndexes/
     private static final Set<String> INDEX_OPTION_KEYS = new HashSet<>(Arrays.asList(
             "unique", "sparse", "expireAfterSeconds", "hidden", "partialFilterExpression",
             "collation", "wildcardProjection", "weights", "default_language", "language_override",
@@ -54,6 +60,9 @@ public class MissingIndexChangeGenerator extends AbstractChangeGenerator impleme
         return PRIORITY_NONE;
     }
 
+    /**
+     * Emit createIndex only after the parent collection's createCollection changeset.
+     */
     @Override
     public Class<? extends DatabaseObject>[] runAfterTypes() {
         //noinspection unchecked
@@ -70,6 +79,13 @@ public class MissingIndexChangeGenerator extends AbstractChangeGenerator impleme
         final Index missingIndex = (Index) missingObject;
         final Document indexInfo = missingIndex.getIndexInfo();
         final Document keys = missingIndex.getKeys();
+        if (keys == null || keys.isEmpty()) {
+            final String collectionName = missingIndex.getCollection() == null
+                    ? "<unknown>" : missingIndex.getCollection().getName();
+            throw new UnexpectedLiquibaseException(
+                    "Cannot generate createIndex for '" + missingIndex.getName()
+                            + "' on collection '" + collectionName + "': index keys are missing");
+        }
 
         final Document options = new Document();
         if (indexInfo != null) {
@@ -83,7 +99,7 @@ public class MissingIndexChangeGenerator extends AbstractChangeGenerator impleme
 
         final CreateIndexChange change = new CreateIndexChange();
         change.setCollectionName(missingIndex.getCollection().getName());
-        change.setKeys((keys == null ? new Document() : keys).toJson());
+        change.setKeys(keys.toJson());
         change.setOptions(options.toJson());
 
         return new Change[]{change};
