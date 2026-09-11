@@ -56,6 +56,7 @@ public class MissingCollectionChangeGenerator extends AbstractChangeGenerator im
         return null;
     }
 
+    /** Emit one createCollection changeset; options JSON is omitted when empty. */
     @Override
     public Change[] fixMissing(DatabaseObject missingObject, DiffOutputControl control, Database referenceDatabase, Database comparisonDatabase, ChangeGeneratorChain chain) {
         final Collection missingCollection = (Collection) missingObject;

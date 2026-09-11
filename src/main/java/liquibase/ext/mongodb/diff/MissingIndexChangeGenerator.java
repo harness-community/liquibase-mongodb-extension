@@ -74,6 +74,7 @@ public class MissingIndexChangeGenerator extends AbstractChangeGenerator impleme
         return null;
     }
 
+    /** Emit one createIndex changeset; rejects missing keys so we fail at generate time, not replay. */
     @Override
     public Change[] fixMissing(DatabaseObject missingObject, DiffOutputControl control, Database referenceDatabase, Database comparisonDatabase, ChangeGeneratorChain chain) {
         final Index missingIndex = (Index) missingObject;

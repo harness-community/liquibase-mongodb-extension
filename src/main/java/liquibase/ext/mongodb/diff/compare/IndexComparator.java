@@ -50,6 +50,7 @@ public class IndexComparator implements DatabaseObjectComparator {
         return PRIORITY_NONE;
     }
 
+    /** Snapshot lookup keys: index name and parent collection name. */
     @Override
     public String[] hash(DatabaseObject databaseObject, Database accordingTo, DatabaseObjectComparatorChain chain) {
         final List<String> hashes = new ArrayList<>();
@@ -63,6 +64,7 @@ public class IndexComparator implements DatabaseObjectComparator {
         return hashes.toArray(new String[0]);
     }
 
+    /** Same index only when name and collection name both match (case-sensitive). */
     @Override
     public boolean isSameObject(DatabaseObject databaseObject1, DatabaseObject databaseObject2, Database accordingTo,
                                 DatabaseObjectComparatorChain chain) {

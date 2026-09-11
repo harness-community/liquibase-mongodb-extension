@@ -89,6 +89,10 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
         };
     }
 
+    /**
+     * Two roles: fill in a Collection example (name + options), or after Schema is snapshotted, list
+     * collections onto it so core will then snapshot each Collection.
+     */
     @Override
     public <T extends DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot, SnapshotGeneratorChain chain) throws DatabaseException, InvalidExampleException {
         if (example instanceof Collection) {
@@ -109,6 +113,7 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
         return (T) chainResponse;
     }
 
+    /** Match one collection by case-sensitive name and copy listCollections options (validator, etc.). */
     private Collection snapshotCollection(Collection example, DatabaseSnapshot snapshot) throws DatabaseException {
         final MongoLiquibaseDatabase database = (MongoLiquibaseDatabase) snapshot.getDatabase();
         final MongoDatabase mongoDatabase = database.getMongoDatabase();
@@ -127,6 +132,7 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
         return null;
     }
 
+    /** Attach included collections to the Schema. Listing failure fails generate-changelog. */
     private void addTo(Schema schema, DatabaseSnapshot snapshot) throws DatabaseException {
         final MongoLiquibaseDatabase database = (MongoLiquibaseDatabase) snapshot.getDatabase();
         final MongoDatabase mongoDatabase = database.getMongoDatabase();
@@ -143,6 +149,7 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
         }
     }
 
+    /** Skip tracking collections, system.*, views, and any type other than collection/timeseries. */
     private boolean shouldSkip(String collectionName, Document collectionInfo, Database database) {
         if (collectionName == null) {
             return true;

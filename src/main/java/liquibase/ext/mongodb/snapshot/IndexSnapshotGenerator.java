@@ -72,6 +72,10 @@ public class IndexSnapshotGenerator implements SnapshotGenerator {
         return null;
     }
 
+    /**
+     * Two roles: fill in an Index example (keys + options), or after Collection is snapshotted, list
+     * its indexes onto it so core will then snapshot each Index.
+     */
     @Override
     public <T extends DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot, SnapshotGeneratorChain chain) throws DatabaseException, InvalidExampleException {
         if (example instanceof Index) {
@@ -92,6 +96,7 @@ public class IndexSnapshotGenerator implements SnapshotGenerator {
         return (T) chainResponse;
     }
 
+    /** Match one index by case-sensitive name. Skips the implicit {@code _id_} index. */
     private Index snapshotIndex(Index example, DatabaseSnapshot snapshot) throws DatabaseException {
         final Collection collection = example.getCollection();
         final MongoDatabase mongoDatabase = ((MongoLiquibaseDatabase) snapshot.getDatabase()).getMongoDatabase();
@@ -109,6 +114,7 @@ public class IndexSnapshotGenerator implements SnapshotGenerator {
         return null;
     }
 
+    /** Attach non-{@code _id_} indexes to the Collection. Listing failure fails generate-changelog. */
     private void addTo(Collection collection, DatabaseSnapshot snapshot) throws DatabaseException {
         final MongoDatabase mongoDatabase = ((MongoLiquibaseDatabase) snapshot.getDatabase()).getMongoDatabase();
         try {
@@ -124,6 +130,7 @@ public class IndexSnapshotGenerator implements SnapshotGenerator {
         }
     }
 
+    /** Copy name, key document, unique flag, and the raw listIndexes payload for option filtering later. */
     private Index toIndex(Document indexInfo, Collection collection) {
         final Index index = new Index(indexInfo.getString("name"), collection)
                 .setKeys(indexInfo.get("key", Document.class))
