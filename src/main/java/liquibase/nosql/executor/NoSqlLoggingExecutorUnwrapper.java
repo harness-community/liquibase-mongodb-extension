@@ -2,7 +2,7 @@ package liquibase.nosql.executor;
 
 /*-
  * #%L
- * Liquibase CosmosDB Extension
+ * Liquibase NoSql Extension
  * %%
  * Copyright (C) 2020 Mastercard
  * %%
@@ -32,8 +32,9 @@ import java.lang.reflect.Field;
  * real reads/writes against MongoDB directly - so they need the real NoSqlExecutor underneath,
  * not the LoggingExecutor wrapper. LoggingExecutor exposes no public accessor for the executor it
  * wraps, so this reads its private delegatedReadExecutor field via reflection. If that field can't
- * be resolved (e.g. a future liquibase-core changes its internals), the original executor is
- * returned unchanged and callers fall back to their existing "*sql not supported" behavior.
+ * be resolved or opened (e.g. a future liquibase-core rename, or module/reflection restrictions),
+ * the original executor is returned unchanged and callers fall back to their existing
+ * "*sql not supported" behavior.
  */
 public final class NoSqlLoggingExecutorUnwrapper {
 
@@ -43,11 +44,15 @@ public final class NoSqlLoggingExecutorUnwrapper {
     }
 
     public static Executor unwrapIfLogging(Executor executor) {
-        if (!(executor instanceof LoggingExecutor) || DELEGATED_READ_EXECUTOR_FIELD == null) {
+        return unwrapIfLogging(executor, DELEGATED_READ_EXECUTOR_FIELD);
+    }
+
+    static Executor unwrapIfLogging(Executor executor, Field delegatedReadExecutorField) {
+        if (!(executor instanceof LoggingExecutor) || delegatedReadExecutorField == null) {
             return executor;
         }
         try {
-            Executor realExecutor = (Executor) DELEGATED_READ_EXECUTOR_FIELD.get(executor);
+            Executor realExecutor = (Executor) delegatedReadExecutorField.get(executor);
             return realExecutor != null ? realExecutor : executor;
         } catch (IllegalAccessException e) {
             return executor;
@@ -59,7 +64,7 @@ public final class NoSqlLoggingExecutorUnwrapper {
             Field field = LoggingExecutor.class.getDeclaredField("delegatedReadExecutor");
             field.setAccessible(true);
             return field;
-        } catch (NoSuchFieldException e) {
+        } catch (Exception e) {
             return null;
         }
     }

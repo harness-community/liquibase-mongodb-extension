@@ -89,9 +89,13 @@ public abstract class AbstractNoSqlLockService<D extends AbstractNoSqlDatabase> 
         return database;
     }
 
+    private Executor getScopedExecutor() {
+        return Scope.getCurrentScope().getSingleton(ExecutorService.class)
+                .getExecutor(NoSqlExecutor.EXECUTOR_NAME, getDatabase());
+    }
+
     public NoSqlExecutor getExecutor() throws DatabaseException {
-        Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor(NoSqlExecutor.EXECUTOR_NAME, getDatabase());
-        executor = NoSqlLoggingExecutorUnwrapper.unwrapIfLogging(executor);
+        Executor executor = NoSqlLoggingExecutorUnwrapper.unwrapIfLogging(getScopedExecutor());
         if (executor instanceof LoggingExecutor) {
             throw new DatabaseException(String.format(mongoBundle.getString("command.unsupported"), "*sql"));
         }
@@ -102,10 +106,10 @@ public abstract class AbstractNoSqlLockService<D extends AbstractNoSqlDatabase> 
     // Liquibase's JDBC LockService gets this for free: LoggingExecutor writes are output-only, so
     // real lock acquisition/release never happens for SQL databases in these commands. NoSqlExecutor
     // performs real driver calls with no such output-only mode, so acquireLock()/releaseLock() check
-    // this directly and skip the real write path instead.
-    private boolean isOutputOnlyMode() throws DatabaseException {
-        Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor(NoSqlExecutor.EXECUTOR_NAME, getDatabase());
-        return executor instanceof LoggingExecutor;
+    // this directly and skip the real write path instead. Inspect the scoped (wrapped) executor here;
+    // getExecutor() unwraps first, so its result is never a LoggingExecutor.
+    private boolean isOutputOnlyMode() {
+        return getScopedExecutor() instanceof LoggingExecutor;
     }
 
     @Override
