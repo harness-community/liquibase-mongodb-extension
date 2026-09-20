@@ -33,6 +33,7 @@ import liquibase.executor.LoggingExecutor;
 import liquibase.logging.Logger;
 import liquibase.nosql.database.AbstractNoSqlDatabase;
 import liquibase.nosql.executor.NoSqlExecutor;
+import liquibase.nosql.executor.NoSqlLoggingExecutorUnwrapper;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -93,12 +94,28 @@ public abstract class AbstractNoSqlHistoryService<D extends AbstractNoSqlDatabas
         return (D) getDatabase();
     }
 
+    private Executor getScopedExecutor() {
+        return Scope.getCurrentScope().getSingleton(ExecutorService.class)
+                .getExecutor(NoSqlExecutor.EXECUTOR_NAME, getDatabase());
+    }
+
     public NoSqlExecutor getExecutor() throws DatabaseException {
-        Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor(NoSqlExecutor.EXECUTOR_NAME, getDatabase());
+        Executor executor = NoSqlLoggingExecutorUnwrapper.unwrapIfLogging(getScopedExecutor());
         if (executor instanceof LoggingExecutor) {
             throw new DatabaseException(String.format(mongoBundle.getString("command.unsupported"), "*sql"));
         }
         return (NoSqlExecutor) executor ;
+    }
+
+    // *-sql commands (updateSql/rollbackSql/rollbackCountSql) must not mutate the real database.
+    // Liquibase's JDBC history service gets this for free: LoggingExecutor writes are output-only, so
+    // real DATABASECHANGELOG inserts/deletes never happen for SQL databases in these commands. NoSqlExecutor
+    // performs real driver calls with no such output-only mode, so init()/setExecType()/removeFromHistory()
+    // check this directly and skip the real write path instead. Reads stay unwrapped via getExecutor().
+    // Inspect the scoped (wrapped) executor here; getExecutor() unwraps first, so its result is never
+    // a LoggingExecutor.
+    private boolean isOutputOnlyMode() {
+        return getScopedExecutor() instanceof LoggingExecutor;
     }
 
     @Override
@@ -117,21 +134,23 @@ public abstract class AbstractNoSqlHistoryService<D extends AbstractNoSqlDatabas
             return;
         }
 
-        if (!hasDatabaseChangeLogTable()) {
-            getLogger().info("Create Database Change Log Collection");
+        if (!isOutputOnlyMode()) {
+            if (!hasDatabaseChangeLogTable()) {
+                getLogger().info("Create Database Change Log Collection");
 
-            // If there is no table in the database for recording change history create one.
-            this.getLogger().info("Creating database history collection with name: "
-                    + getDatabase().getConnection().getCatalog() + "." + this.getDatabaseChangeLogTableName());
-            createRepository();
-            getLogger().info("Created database history collection : "
-                    + getDatabase().getConnection().getCatalog() + "." + this.getDatabaseChangeLogTableName());
-            this.hasDatabaseChangeLogTable = TRUE;
-        }
+                // If there is no table in the database for recording change history create one.
+                this.getLogger().info("Creating database history collection with name: "
+                        + getDatabase().getConnection().getCatalog() + "." + this.getDatabaseChangeLogTableName());
+                createRepository();
+                getLogger().info("Created database history collection : "
+                        + getDatabase().getConnection().getCatalog() + "." + this.getDatabaseChangeLogTableName());
+                this.hasDatabaseChangeLogTable = TRUE;
+            }
 
-        if (!adjustedChangeLogTable) {
-            adjustRepository();
-            adjustedChangeLogTable = TRUE;
+            if (!adjustedChangeLogTable) {
+                adjustRepository();
+                adjustedChangeLogTable = TRUE;
+            }
         }
 
         this.serviceInitialized = true;
@@ -182,11 +201,13 @@ public abstract class AbstractNoSqlHistoryService<D extends AbstractNoSqlDatabas
     @Override
     public void setExecType(final ChangeSet changeSet, final ChangeSet.ExecType execType) throws DatabaseException {
 
-        final Integer nextSequenceValue = getNextSequenceValue();
+        if (!isOutputOnlyMode()) {
+            final Integer nextSequenceValue = getNextSequenceValue();
 
-        markChangeSetRun(changeSet, execType, nextSequenceValue);
+            markChangeSetRun(changeSet, execType, nextSequenceValue);
 
-        getDatabase().commit();
+            getDatabase().commit();
+        }
         if (this.ranChangeSetList != null) {
             this.ranChangeSetList.add(new RanChangeSet(changeSet, execType, null, null));
         }
@@ -195,7 +216,9 @@ public abstract class AbstractNoSqlHistoryService<D extends AbstractNoSqlDatabas
     @Override
     public void removeFromHistory(final ChangeSet changeSet) throws DatabaseException {
 
-        removeRanChangeSet(changeSet);
+        if (!isOutputOnlyMode()) {
+            removeRanChangeSet(changeSet);
+        }
 
         if (this.ranChangeSetList != null) {
             this.ranChangeSetList.remove(new RanChangeSet(changeSet));

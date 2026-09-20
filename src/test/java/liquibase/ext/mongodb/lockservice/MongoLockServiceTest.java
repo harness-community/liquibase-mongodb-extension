@@ -9,6 +9,7 @@ import liquibase.exception.LockException;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.executor.Executor;
 import liquibase.executor.ExecutorService;
+import liquibase.executor.LoggingExecutor;
 import liquibase.ext.mongodb.database.MongoConnection;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.statement.CountCollectionByNameStatement;
@@ -29,6 +30,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.StringWriter;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Arrays;
@@ -106,6 +108,42 @@ class MongoLockServiceTest {
         } catch (DatabaseException e) {
             e.printStackTrace();
         }
+    }
+
+    @SneakyThrows
+    @Test
+    void getExecutorUnwrapsLoggingExecutor() {
+        Scope.getCurrentScope().getSingleton(ExecutorService.class)
+                .setExecutor(EXECUTOR_NAME, database, new LoggingExecutor(executorMock, new StringWriter(), database));
+        lockService.setDatabase(database);
+
+        assertThat(lockService.getExecutor()).isSameAs(executorMock);
+    }
+
+    @SneakyThrows
+    @Test
+    void acquireLockInOutputOnlyModeSkipsDatabaseWrites() {
+        Scope.getCurrentScope().getSingleton(ExecutorService.class)
+                .setExecutor(EXECUTOR_NAME, database, new LoggingExecutor(executorMock, new StringWriter(), database));
+        lockService.setDatabase(database);
+
+        assertThat(lockService.hasChangeLogLock()).isFalse();
+        assertThat(lockService.acquireLock()).isTrue();
+        assertThat(lockService.hasChangeLogLock()).isTrue();
+
+        verifyNoInteractions(executorMock);
+    }
+
+    @SneakyThrows
+    @Test
+    void releaseLockInOutputOnlyModeSkipsDatabaseWrites() {
+        Scope.getCurrentScope().getSingleton(ExecutorService.class)
+                .setExecutor(EXECUTOR_NAME, database, new LoggingExecutor(executorMock, new StringWriter(), database));
+        lockService.setDatabase(database);
+
+        lockService.releaseLock();
+
+        verifyNoInteractions(executorMock);
     }
 
     @Test

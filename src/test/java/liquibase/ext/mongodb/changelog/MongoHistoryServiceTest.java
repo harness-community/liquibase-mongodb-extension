@@ -2,11 +2,13 @@ package liquibase.ext.mongodb.changelog;
 
 import liquibase.Scope;
 import liquibase.changelog.ChangeLogHistoryServiceFactory;
+import liquibase.changelog.ChangeSet;
 import liquibase.database.core.DB2Database;
 import liquibase.exception.DatabaseException;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.executor.Executor;
 import liquibase.executor.ExecutorService;
+import liquibase.executor.LoggingExecutor;
 import liquibase.ext.mongodb.database.MongoConnection;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.statement.CountCollectionByNameStatement;
@@ -21,6 +23,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.StringWriter;
+
 import static java.lang.Boolean.FALSE;
 import static liquibase.nosql.executor.NoSqlExecutor.EXECUTOR_NAME;
 import static liquibase.plugin.Plugin.PRIORITY_SPECIALIZED;
@@ -32,6 +36,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 @ExtendWith(MockitoExtension.class)
@@ -99,6 +104,58 @@ class MongoHistoryServiceTest {
         } catch (DatabaseException e) {
             e.printStackTrace();
         }
+    }
+
+    @SneakyThrows
+    @Test
+    void getExecutorUnwrapsLoggingExecutor() {
+        Scope.getCurrentScope().getSingleton(ExecutorService.class)
+                .setExecutor(EXECUTOR_NAME, database, new LoggingExecutor(executorMock, new StringWriter(), database));
+        historyService.setDatabase(database);
+
+        assertThat(historyService.getExecutor()).isSameAs(executorMock);
+    }
+
+    @SneakyThrows
+    @Test
+    void initInOutputOnlyModeSkipsDatabaseWrites() {
+        Scope.getCurrentScope().getSingleton(ExecutorService.class)
+                .setExecutor(EXECUTOR_NAME, database, new LoggingExecutor(executorMock, new StringWriter(), database));
+        historyService.setDatabase(database);
+
+        historyService.init();
+
+        assertThat(historyService.isServiceInitialized()).isTrue();
+        assertThat(historyService.getHasDatabaseChangeLogTable()).isNull();
+        assertThat(historyService.getAdjustedChangeLogTable()).isFalse();
+        verifyNoInteractions(executorMock);
+    }
+
+    @SneakyThrows
+    @Test
+    void setExecTypeInOutputOnlyModeSkipsDatabaseWrites() {
+        Scope.getCurrentScope().getSingleton(ExecutorService.class)
+                .setExecutor(EXECUTOR_NAME, database, new LoggingExecutor(executorMock, new StringWriter(), database));
+        historyService.setDatabase(database);
+
+        final ChangeSet changeSet = new ChangeSet("1", "author", false, false, "changelog.xml", null, null, null, null);
+        historyService.setExecType(changeSet, ChangeSet.ExecType.EXECUTED);
+
+        verifyNoInteractions(executorMock);
+        verify(connectionMock, times(0)).commit();
+    }
+
+    @SneakyThrows
+    @Test
+    void removeFromHistoryInOutputOnlyModeSkipsDatabaseWrites() {
+        Scope.getCurrentScope().getSingleton(ExecutorService.class)
+                .setExecutor(EXECUTOR_NAME, database, new LoggingExecutor(executorMock, new StringWriter(), database));
+        historyService.setDatabase(database);
+
+        final ChangeSet changeSet = new ChangeSet("1", "author", false, false, "changelog.xml", null, null, null, null);
+        historyService.removeFromHistory(changeSet);
+
+        verifyNoInteractions(executorMock);
     }
 
     @Test
