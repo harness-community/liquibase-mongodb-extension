@@ -1,0 +1,1 @@
+liquibase.ext.mongodb.diff.compare.IndexComparator

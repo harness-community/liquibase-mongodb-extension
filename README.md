@@ -29,6 +29,7 @@ This is a **Harness-enhanced** Liquibase extension for MongoDB support, forked f
 The original extension resulted as an alternative to existing MongoDB evolution tools that were basically wrappers over the deprecated [`db.eval`](https://docs.mongodb.com/manual/reference/method/db.eval/#db.eval) shell method (deprecated starting from MongoDB 4.2).
 
 **Harness has enhanced this extension** with additional features including:
+- **Native generate-changelog** - Core Liquibase `generate-changelog` for Mongo collections and indexes
 - **Mongo Native Executor** - Execute native MongoDB operations with improved performance
 - Enhanced database change management capabilities
 - Additional operational improvements and optimizations
@@ -200,6 +201,12 @@ mvn clean install -Prun-its,mongo-3x
 ## Harness Enhancements
 
 This Harness fork includes several enhancements over the Liquibase MongoDB extension:
+
+### **Native generate-changelog**
+- Core Liquibase `generate-changelog` works against MongoDB (same command SQL uses)
+- Snapshots collections and indexes into `createCollection` / `createIndex` changesets
+- Skips views, `system.*`, and Liquibase tracking collections
+- Replaces the documented Python `MongoDB.py` / `mongoGenerateChangelog.py` workaround
 
 ### **Mongo Native Executor**
 - Enhanced native MongoDB operation execution
