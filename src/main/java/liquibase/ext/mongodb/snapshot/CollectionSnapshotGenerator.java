@@ -21,22 +21,26 @@ package liquibase.ext.mongodb.snapshot;
  */
 
 import com.mongodb.MongoException;
-import com.mongodb.client.MongoDatabase;
+import liquibase.Scope;
 import liquibase.database.Database;
 import liquibase.exception.DatabaseException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
+import liquibase.ext.mongodb.snapshot.MongoSnapshotCache.CachedCollection;
+import liquibase.ext.mongodb.statement.AuthorizedListCollectionsStatement;
 import liquibase.ext.mongodb.structure.Collection;
+import liquibase.ext.mongodb.structure.Index;
 import liquibase.snapshot.DatabaseSnapshot;
-import liquibase.snapshot.InvalidExampleException;
 import liquibase.snapshot.SnapshotGenerator;
-import liquibase.snapshot.SnapshotGeneratorChain;
 import liquibase.structure.DatabaseObject;
 import liquibase.structure.core.Schema;
 import org.bson.Document;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Objects;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -45,36 +49,15 @@ import java.util.Set;
  * later re-snapshotted so options (validator, etc.) are filled in; IndexSnapshotGenerator attaches
  * indexes. MissingCollectionChangeGenerator turns each missing Collection into createCollection.
  */
-public class CollectionSnapshotGenerator implements SnapshotGenerator {
+public class CollectionSnapshotGenerator extends AbstractMongoSnapshotGenerator {
 
     private static final String SYSTEM_COLLECTION_PREFIX = "system.";
     // Only these types are emitted; "view" and any other/unrecognized type is skipped. Missing type
     // (older/simple collections) is treated as included.
     private static final Set<String> INCLUDED_TYPES = new HashSet<>(Arrays.asList("collection", "timeseries"));
 
-    /**
-     * This JAR is Mongo-only, but SnapshotGenerator is a global SPI. We also attach to Schema
-     * (PRIORITY_ADDITIONAL); without the Mongo database guard that would run on JDBC Schema snapshots
-     * if this JAR were on a mixed classpath.
-     */
-    @Override
-    public int getPriority(Class<? extends DatabaseObject> objectType, Database database) {
-        if (!(database instanceof MongoLiquibaseDatabase)) {
-            return PRIORITY_NONE;
-        }
-        if (Collection.class.isAssignableFrom(objectType)) {
-            return PRIORITY_DEFAULT;
-        }
-        if (Schema.class.isAssignableFrom(objectType)) {
-            return PRIORITY_ADDITIONAL;
-        }
-        return PRIORITY_NONE;
-    }
-
-    @Override
-    public Class<? extends DatabaseObject>[] addsTo() {
-        //noinspection unchecked
-        return new Class[]{Schema.class};
+    public CollectionSnapshotGenerator() {
+        super(Collection.class, Schema.class);
     }
 
     @Override
@@ -89,68 +72,85 @@ public class CollectionSnapshotGenerator implements SnapshotGenerator {
         };
     }
 
-    /**
-     * Two roles: fill in a Collection example (name + options), or after Schema is snapshotted, list
-     * collections onto it so core will then snapshot each Collection.
-     */
     @Override
-    public <T extends DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot, SnapshotGeneratorChain chain) throws DatabaseException, InvalidExampleException {
-        if (example instanceof Collection) {
-            //noinspection unchecked
-            return (T) snapshotCollection((Collection) example, snapshot);
-        }
+    protected DatabaseObject snapshotObject(final DatabaseObject example, final DatabaseSnapshot snapshot) throws DatabaseException {
+        return snapshotCollection((Collection) example, snapshot);
+    }
 
-        final DatabaseObject chainResponse = chain.snapshot(example, snapshot);
-        if (chainResponse == null) {
+    @Override
+    protected void addTo(final DatabaseObject parent, final DatabaseSnapshot snapshot) throws DatabaseException {
+        final Schema schema = (Schema) parent;
+        for (String collectionName : loadCollections(snapshot).keySet()) {
+            schema.addDatabaseObject(new Collection(collectionName, schema));
+        }
+    }
+
+    /** Match one collection by case-sensitive name and copy its listCollections options (validator, etc.). */
+    private Collection snapshotCollection(final Collection example, final DatabaseSnapshot snapshot) throws DatabaseException {
+        final CachedCollection cached = loadCollections(snapshot).get(example.getName());
+        if (cached == null) {
             return null;
         }
-
-        if (example instanceof Schema && snapshot.getSnapshotControl().shouldInclude(Collection.class)) {
-            addTo((Schema) chainResponse, snapshot);
-        }
-
-        //noinspection unchecked
-        return (T) chainResponse;
+        final Document collectionInfo = cached.getInfo();
+        return new Collection(collectionInfo.getString("name"), example.getSchema())
+                .setOptions(collectionInfo.get("options", Document.class));
     }
 
-    /** Match one collection by case-sensitive name and copy listCollections options (validator, etc.). */
-    private Collection snapshotCollection(Collection example, DatabaseSnapshot snapshot) throws DatabaseException {
-        final MongoLiquibaseDatabase database = (MongoLiquibaseDatabase) snapshot.getDatabase();
-        final MongoDatabase mongoDatabase = database.getMongoDatabase();
-        try {
-            for (Document collectionInfo : mongoDatabase.listCollections()) {
-                final String collectionName = collectionInfo.getString("name");
-                if (!Objects.equals(collectionName, example.getName()) || shouldSkip(collectionName, collectionInfo, database)) {
-                    continue;
-                }
-                return new Collection(collectionName, example.getSchema())
-                        .setOptions(collectionInfo.get("options", Document.class));
-            }
-        } catch (MongoException e) {
-            throw new DatabaseException("Unable to list collections while snapshotting '" + example.getName() + "'", e);
+    /**
+     * Loaded once per {@link DatabaseSnapshot} and shared by every subsequent call, whether that is
+     * {@link #addTo} listing collections onto the Schema, or core re-snapshotting each Collection
+     * example afterward: both would otherwise re-list collections from Mongo on every call.
+     */
+    private Map<String, CachedCollection> loadCollections(final DatabaseSnapshot snapshot) throws DatabaseException {
+        final Map<String, CachedCollection> cached = MongoSnapshotCache.get(snapshot);
+        if (cached != null) {
+            return cached;
         }
-        return null;
-    }
 
-    /** Attach included collections to the Schema. Listing failure fails generate-changelog. */
-    private void addTo(Schema schema, DatabaseSnapshot snapshot) throws DatabaseException {
         final MongoLiquibaseDatabase database = (MongoLiquibaseDatabase) snapshot.getDatabase();
-        final MongoDatabase mongoDatabase = database.getMongoDatabase();
+        // Eager listIndexes avoids a second round trip per collection when IndexSnapshotGenerator
+        // attaches indexes right after, but only pay for it when indexes are actually wanted.
+        final boolean includeIndexes = snapshot.getSnapshotControl().shouldInclude(Index.class);
+
+        final List<Document> listing;
         try {
-            for (Document collectionInfo : mongoDatabase.listCollections()) {
-                final String collectionName = collectionInfo.getString("name");
-                if (shouldSkip(collectionName, collectionInfo, database)) {
-                    continue;
-                }
-                schema.addDatabaseObject(new Collection(collectionName, schema));
-            }
+            listing = new AuthorizedListCollectionsStatement().queryForList(database);
         } catch (MongoException e) {
             throw new DatabaseException("Unable to list collections", e);
+        }
+
+        final Map<String, CachedCollection> collectionsByName = new LinkedHashMap<>();
+        for (Document collectionInfo : listing) {
+            final String collectionName = collectionInfo.getString("name");
+            if (shouldSkip(collectionName, collectionInfo, database)) {
+                continue;
+            }
+            collectionsByName.put(collectionName, new CachedCollection(collectionInfo,
+                    includeIndexes ? listIndexes(database, collectionName) : null));
+        }
+
+        // listCollections is issued with authorizedCollections:true, which returns the visible subset
+        // with ok:1 rather than failing, so a privilege-limited user cannot tell a complete listing from
+        // a filtered one. Say what was seen, once per snapshot, so a short changelog is explicable.
+        Scope.getCurrentScope().getLog(getClass()).info("Snapshotting " + collectionsByName.size()
+                + " MongoDB collection(s) visible to the current user; a user without listCollections on the"
+                + " whole database sees only the collections it is authorized for");
+
+        MongoSnapshotCache.put(snapshot, collectionsByName);
+        return collectionsByName;
+    }
+
+    private List<Document> listIndexes(final MongoLiquibaseDatabase database, final String collectionName) throws DatabaseException {
+        try {
+            return database.getMongoDatabase().getCollection(collectionName)
+                    .listIndexes().into(new ArrayList<>());
+        } catch (MongoException e) {
+            throw new DatabaseException("Unable to list indexes for collection '" + collectionName + "'", e);
         }
     }
 
     /** Skip tracking collections, system.*, views, and any type other than collection/timeseries. */
-    private boolean shouldSkip(String collectionName, Document collectionInfo, Database database) {
+    private boolean shouldSkip(final String collectionName, final Document collectionInfo, final Database database) {
         if (collectionName == null) {
             return true;
         }

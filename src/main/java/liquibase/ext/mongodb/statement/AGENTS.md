@@ -22,6 +22,7 @@ Each statement class encapsulates:
 - `DropCollectionStatement.java` - Removes collections
 - `DropAllCollectionsStatement.java` - Drops all collections in database
 - `ListCollectionNamesStatement.java` - Lists collection names
+- `AuthorizedListCollectionsStatement.java` - Lists full collection info (including `options`) restricted to authorized collections, draining every `getMore` batch; used by the generate-changelog snapshot generators
 - `CountCollectionByNameStatement.java` - Checks collection existence by counting
 
 ### Index Operations
@@ -52,16 +53,32 @@ Each statement class encapsulates:
 
 **Class Hierarchy:**
 ```
-AbstractMongoStatement (base for all)
-├── AbstractCollectionStatement (collection-scoped operations)
-│   ├── CreateCollectionStatement
-│   ├── CreateIndexStatement
-│   ├── InsertOneStatement
-│   └── ... (most document operations)
-├── AbstractRunCommandStatement (command-based operations)
-│   ├── RunCommandStatement
-│   └── AdminCommandStatement
-└── DropAllCollectionsStatement (database-scoped)
+AbstractNoSqlStatement
+└── AbstractMongoStatement
+    ├── AbstractCollectionStatement (collection-scoped, direct driver calls)
+    │   ├── FindAllStatement
+    │   ├── UpdateManyStatement
+    │   ├── DeleteManyStatement
+    │   ├── CountDocumentsInCollectionStatement
+    │   ├── GetMaxChangeSetSequenceStatement
+    │   ├── ReplaceChangeLogLockStatement
+    │   └── SelectChangeLogLockStatement
+    ├── AbstractRunCommandStatement (built as a runCommand document)
+    │   ├── RunCommandStatement
+    │   │   └── AdminCommandStatement
+    │   ├── ListCollectionNamesStatement
+    │   │   └── CountCollectionByNameStatement
+    │   ├── AuthorizedListCollectionsStatement
+    │   ├── CreateCollectionStatement
+    │   ├── CreateIndexStatement
+    │   ├── DropCollectionStatement
+    │   ├── DropIndexStatement
+    │   ├── InsertManyStatement
+    │   │   └── InsertOneStatement
+    │   └── FindOneAndUpdateStatement
+    └── DropAllCollectionsStatement (database-scoped)
+
+MongoshStatement sits outside this hierarchy (extends AbstractSqlStatement, run by MongoshExecutor).
 ```
 
 ## Testing
@@ -115,8 +132,8 @@ CreateIndexStatement statement = new CreateIndexStatement(
 ## DON'Ts
 
 - Don't put business logic in statements - they should only execute operations
-- Don't catch MongoDB driver exceptions - let them propagate
-- Don't create statements directly in tests - use the corresponding Change classes
+- Don't catch MongoDB driver exceptions - let them propagate, except in a best-effort cleanup path in a `finally` block, where swallowing and logging is correct so the original failure isn't masked
+- Don't reach past a Change to its statement in a change-level test - go through the Change class. A statement's own `*StatementTest` constructs it directly, and a statement with no Change behind it (`AuthorizedListCollectionsStatement`, driven by the snapshot generators) can only be tested that way
 - Don't use deprecated `db.eval()` style operations
 - Don't hardcode database names - use connection's database
 

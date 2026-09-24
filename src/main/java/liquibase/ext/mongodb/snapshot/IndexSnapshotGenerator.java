@@ -22,116 +22,94 @@ package liquibase.ext.mongodb.snapshot;
 
 import com.mongodb.MongoException;
 import com.mongodb.client.MongoDatabase;
-import liquibase.database.Database;
 import liquibase.exception.DatabaseException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
+import liquibase.ext.mongodb.snapshot.MongoSnapshotCache.CachedCollection;
 import liquibase.ext.mongodb.structure.Collection;
 import liquibase.ext.mongodb.structure.Index;
 import liquibase.snapshot.DatabaseSnapshot;
-import liquibase.snapshot.InvalidExampleException;
-import liquibase.snapshot.SnapshotGenerator;
-import liquibase.snapshot.SnapshotGeneratorChain;
 import liquibase.structure.DatabaseObject;
 import org.bson.Document;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * generate-changelog / diff lifecycle: after a Collection is snapshotted, this generator lists its
  * indexes onto that Collection (same role as IndexSnapshotGenerator attaching to Table on SQL).
  * MissingIndexChangeGenerator then emits createIndex, ordered after createCollection via runAfterTypes.
  */
-public class IndexSnapshotGenerator implements SnapshotGenerator {
+public class IndexSnapshotGenerator extends AbstractMongoSnapshotGenerator {
 
     private static final String ID_INDEX_NAME = "_id_";
 
-    /**
-     * Same mixed-classpath guard as CollectionSnapshotGenerator: we attach to Collection with
-     * PRIORITY_ADDITIONAL, so only run when the target database is Mongo.
-     */
-    @Override
-    public int getPriority(Class<? extends DatabaseObject> objectType, Database database) {
-        if (!(database instanceof MongoLiquibaseDatabase)) {
-            return PRIORITY_NONE;
-        }
-        if (Index.class.isAssignableFrom(objectType)) {
-            return PRIORITY_DEFAULT;
-        }
-        if (Collection.class.isAssignableFrom(objectType)) {
-            return PRIORITY_ADDITIONAL;
-        }
-        return PRIORITY_NONE;
+    public IndexSnapshotGenerator() {
+        super(Index.class, Collection.class);
     }
 
     @Override
-    public Class<? extends DatabaseObject>[] addsTo() {
-        //noinspection unchecked
-        return new Class[]{Collection.class};
+    protected DatabaseObject snapshotObject(final DatabaseObject example, final DatabaseSnapshot snapshot) throws DatabaseException {
+        return snapshotIndex((Index) example, snapshot);
     }
 
     @Override
-    public Class<? extends SnapshotGenerator>[] replaces() {
-        return null;
-    }
-
-    /**
-     * Two roles: fill in an Index example (keys + options), or after Collection is snapshotted, list
-     * its indexes onto it so core will then snapshot each Index.
-     */
-    @Override
-    public <T extends DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot, SnapshotGeneratorChain chain) throws DatabaseException, InvalidExampleException {
-        if (example instanceof Index) {
-            //noinspection unchecked
-            return (T) snapshotIndex((Index) example, snapshot);
+    protected void addTo(final DatabaseObject parent, final DatabaseSnapshot snapshot) throws DatabaseException {
+        final Collection collection = (Collection) parent;
+        for (Document indexInfo : listIndexes(collection, snapshot)) {
+            final String indexName = indexInfo.getString("name");
+            if (indexName == null || ID_INDEX_NAME.equals(indexName)) {
+                continue;
+            }
+            collection.addDatabaseObject(toIndex(indexInfo, collection));
         }
-
-        final DatabaseObject chainResponse = chain.snapshot(example, snapshot);
-        if (chainResponse == null) {
-            return null;
-        }
-
-        if (example instanceof Collection && snapshot.getSnapshotControl().shouldInclude(Index.class)) {
-            addTo((Collection) chainResponse, snapshot);
-        }
-
-        //noinspection unchecked
-        return (T) chainResponse;
     }
 
     /** Match one index by case-sensitive name. Skips the implicit {@code _id_} index. */
-    private Index snapshotIndex(Index example, DatabaseSnapshot snapshot) throws DatabaseException {
+    private Index snapshotIndex(final Index example, final DatabaseSnapshot snapshot) throws DatabaseException {
         final Collection collection = example.getCollection();
-        final MongoDatabase mongoDatabase = ((MongoLiquibaseDatabase) snapshot.getDatabase()).getMongoDatabase();
-        try {
-            for (Document indexInfo : mongoDatabase.getCollection(collection.getName()).listIndexes()) {
-                final String indexName = indexInfo.getString("name");
-                if (indexName == null || !indexName.equals(example.getName()) || ID_INDEX_NAME.equals(indexName)) {
-                    continue;
-                }
-                return toIndex(indexInfo, collection);
+        for (Document indexInfo : listIndexes(collection, snapshot)) {
+            final String indexName = indexInfo.getString("name");
+            if (indexName == null || !indexName.equals(example.getName()) || ID_INDEX_NAME.equals(indexName)) {
+                continue;
             }
-        } catch (MongoException e) {
-            throw new DatabaseException("Unable to list indexes for collection '" + collection.getName() + "'", e);
+            return toIndex(indexInfo, collection);
         }
         return null;
     }
 
-    /** Attach non-{@code _id_} indexes to the Collection. Listing failure fails generate-changelog. */
-    private void addTo(Collection collection, DatabaseSnapshot snapshot) throws DatabaseException {
+    /**
+     * Prefers the indexes CollectionSnapshotGenerator already fetched eagerly and cached alongside the
+     * collection listing; falls back to a direct listIndexes call when that cache holds no indexes for
+     * this collection, e.g. an Index snapshotted directly without the Schema having been listed first,
+     * or a listing taken when indexes were not yet in scope. A fallback fetch is written back to the
+     * cache entry so re-snapshotting each index of that collection does not repeat it.
+     */
+    private List<Document> listIndexes(final Collection collection, final DatabaseSnapshot snapshot) throws DatabaseException {
+        final Map<String, CachedCollection> cachedCollections = MongoSnapshotCache.get(snapshot);
+        final CachedCollection cachedCollection = cachedCollections == null
+                ? null
+                : cachedCollections.get(collection.getName());
+        if (cachedCollection != null && cachedCollection.getIndexes() != null) {
+            return cachedCollection.getIndexes();
+        }
+
         final MongoDatabase mongoDatabase = ((MongoLiquibaseDatabase) snapshot.getDatabase()).getMongoDatabase();
+        final List<Document> indexes;
         try {
-            for (Document indexInfo : mongoDatabase.getCollection(collection.getName()).listIndexes()) {
-                final String indexName = indexInfo.getString("name");
-                if (indexName == null || ID_INDEX_NAME.equals(indexName)) {
-                    continue;
-                }
-                collection.addDatabaseObject(toIndex(indexInfo, collection));
-            }
+            indexes = mongoDatabase.getCollection(collection.getName()).listIndexes().into(new ArrayList<>());
         } catch (MongoException e) {
             throw new DatabaseException("Unable to list indexes for collection '" + collection.getName() + "'", e);
         }
+
+        if (cachedCollection != null) {
+            cachedCollection.setIndexes(indexes);
+        }
+        return indexes;
     }
 
     /** Copy name, key document, unique flag, and the raw listIndexes payload for option filtering later. */
-    private Index toIndex(Document indexInfo, Collection collection) {
+    private Index toIndex(final Document indexInfo, final Collection collection) {
         final Index index = new Index(indexInfo.getString("name"), collection)
                 .setKeys(indexInfo.get("key", Document.class))
                 .setIndexInfo(indexInfo);

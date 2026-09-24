@@ -20,8 +20,8 @@ package liquibase.ext.mongodb.snapshot;
  * #L%
  */
 
-import com.mongodb.client.ListCollectionsIterable;
-import com.mongodb.client.MongoCursor;
+import com.mongodb.client.ListIndexesIterable;
+import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import liquibase.exception.DatabaseException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
@@ -36,13 +36,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_ADDITIONAL;
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_DEFAULT;
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_NONE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -58,16 +62,18 @@ class CollectionSnapshotGeneratorTest {
     private MongoDatabase mongoDatabase;
 
     @Mock
+    private MongoCollection<Document> mongoCollection;
+
+    @Mock
+    private ListIndexesIterable<Document> listIndexesIterable;
+
+    @Mock
     private DatabaseSnapshot databaseSnapshot;
 
     @Mock
     private SnapshotControl snapshotControl;
 
-    @Mock
-    private ListCollectionsIterable<Document> listCollectionsIterable;
-
-    @Mock
-    private MongoCursor<Document> cursor;
+    private final Map<String, Object> scratchData = new HashMap<>();
 
     @BeforeEach
     void setUp() {
@@ -76,14 +82,36 @@ class CollectionSnapshotGeneratorTest {
         lenient().when(database.getDatabaseChangeLogLockTableName()).thenReturn("DATABASECHANGELOGLOCK");
         lenient().when(databaseSnapshot.getDatabase()).thenReturn(database);
         lenient().when(databaseSnapshot.getSnapshotControl()).thenReturn(snapshotControl);
-        lenient().when(mongoDatabase.listCollections()).thenReturn(listCollectionsIterable);
+
+        // Route the shared scratch-cache mock through a real map so the generator's own
+        // get-or-load caching behaves like it would against a real DatabaseSnapshot.
+        lenient().when(databaseSnapshot.getScratchData(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(inv -> scratchData.get(inv.getArgument(0, String.class)));
+        lenient().when(databaseSnapshot.setScratchData(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> scratchData.put(inv.getArgument(0, String.class), inv.getArgument(1)));
+
+        lenient().when(mongoDatabase.getCollection(org.mockito.ArgumentMatchers.anyString())).thenReturn(mongoCollection);
+        lenient().when(mongoCollection.listIndexes()).thenReturn(listIndexesIterable);
+        lenient().when(listIndexesIterable.into(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
     }
 
+    /** Stubs the listCollections runCommand to return a single, cursor-exhausted batch. */
     private void stubCollections(List<Document> collections) {
-        when(listCollectionsIterable.iterator()).thenReturn(cursor);
-        final java.util.Iterator<Document> it = collections.iterator();
-        when(cursor.hasNext()).thenAnswer(inv -> it.hasNext());
-        when(cursor.next()).thenAnswer(inv -> it.next());
+        final Document response = new Document("cursor", new Document("id", 0L)
+                .append("ns", "test.$cmd.listCollections")
+                .append("firstBatch", collections))
+                .append("ok", 1.0);
+        when(mongoDatabase.runCommand(any(Document.class))).thenReturn(response);
+    }
+
+    private liquibase.snapshot.SnapshotGeneratorChain passthroughChain() {
+        return new liquibase.snapshot.SnapshotGeneratorChain(null) {
+            @Override
+            public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
+                return example;
+            }
+        };
     }
 
     @Test
@@ -112,14 +140,9 @@ class CollectionSnapshotGeneratorTest {
         when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
 
         final liquibase.structure.core.Schema schema = new liquibase.structure.core.Schema();
-        generator.snapshot(schema, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
-            @Override
-            public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
-                return example;
-            }
-        });
+        generator.snapshot(schema, databaseSnapshot, passthroughChain());
 
-        final java.util.List<Collection> found = schema.getDatabaseObjects(Collection.class);
+        final List<Collection> found = new java.util.ArrayList<>(schema.getDatabaseObjects(Collection.class));
         assertThat(found).extracting(Collection::getName)
                 .containsExactlyInAnyOrder("users", "readings", "legacyCollection");
     }
@@ -136,12 +159,7 @@ class CollectionSnapshotGeneratorTest {
         when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
 
         final liquibase.structure.core.Schema schema = new liquibase.structure.core.Schema();
-        generator.snapshot(schema, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
-            @Override
-            public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
-                return example;
-            }
-        });
+        generator.snapshot(schema, databaseSnapshot, passthroughChain());
 
         assertThat(schema.getDatabaseObjects(Collection.class))
                 .extracting(Collection::getName)
@@ -171,12 +189,7 @@ class CollectionSnapshotGeneratorTest {
         when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
 
         final liquibase.structure.core.Schema schema = new liquibase.structure.core.Schema();
-        generator.snapshot(schema, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
-            @Override
-            public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
-                return example;
-            }
-        });
+        generator.snapshot(schema, databaseSnapshot, passthroughChain());
 
         assertThat(schema.getDatabaseObjects(Collection.class))
                 .extracting(Collection::getName)
@@ -192,12 +205,7 @@ class CollectionSnapshotGeneratorTest {
         when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
 
         final liquibase.structure.core.Schema schema = new liquibase.structure.core.Schema();
-        generator.snapshot(schema, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
-            @Override
-            public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
-                return example;
-            }
-        });
+        generator.snapshot(schema, databaseSnapshot, passthroughChain());
 
         assertThat(schema.getDatabaseObjects(Collection.class))
                 .extracting(Collection::getName)
@@ -220,26 +228,80 @@ class CollectionSnapshotGeneratorTest {
 
     @Test
     void addToPropagatesMongoExceptionFromListCollections() {
-        when(mongoDatabase.listCollections()).thenThrow(new com.mongodb.MongoException("boom"));
+        when(mongoDatabase.runCommand(any(Document.class))).thenThrow(new com.mongodb.MongoException("boom"));
         when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
 
         final liquibase.structure.core.Schema schema = new liquibase.structure.core.Schema();
-        assertThatThrownBy(() -> generator.snapshot(schema, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
-            @Override
-            public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
-                return example;
-            }
-        })).isInstanceOf(DatabaseException.class)
+        assertThatThrownBy(() -> generator.snapshot(schema, databaseSnapshot, passthroughChain()))
+                .isInstanceOf(DatabaseException.class)
                 .hasMessageContaining("Unable to list collections");
     }
 
     @Test
     void snapshotCollectionPropagatesMongoExceptionFromListCollections() {
-        when(mongoDatabase.listCollections()).thenThrow(new com.mongodb.MongoException("boom"));
+        when(mongoDatabase.runCommand(any(Document.class))).thenThrow(new com.mongodb.MongoException("boom"));
 
         final Collection example = new Collection("users", null);
         assertThatThrownBy(() -> generator.snapshot(example, databaseSnapshot, null))
                 .isInstanceOf(DatabaseException.class)
-                .hasMessageContaining("Unable to list collections while snapshotting 'users'");
+                .hasMessageContaining("Unable to list collections");
+    }
+
+    @Test
+    void listingIsCachedAcrossSchemaAndPerCollectionSnapshots() throws Exception {
+        stubCollections(Collections.singletonList(
+                new Document("name", "orders").append("type", "collection")
+        ));
+        when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
+
+        final liquibase.structure.core.Schema schema = new liquibase.structure.core.Schema();
+        generator.snapshot(schema, databaseSnapshot, passthroughChain());
+        generator.snapshot(new Collection("orders", null), databaseSnapshot, null);
+
+        // One listCollections call for the whole run, reused by both the Schema listing and the
+        // per-Collection re-snapshot, instead of one call per invocation.
+        org.mockito.Mockito.verify(mongoDatabase, org.mockito.Mockito.times(1)).runCommand(any(Document.class));
+    }
+
+    @Test
+    void listingAttributesIndexFailuresToTheCollectionNotToListCollections() {
+        stubCollections(Collections.singletonList(
+                new Document("name", "orders").append("type", "collection")
+        ));
+        when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
+        when(snapshotControl.shouldInclude(liquibase.ext.mongodb.structure.Index.class)).thenReturn(true);
+        when(mongoCollection.listIndexes()).thenThrow(new com.mongodb.MongoException("boom"));
+
+        assertThatThrownBy(() -> generator.snapshot(new liquibase.structure.core.Schema(), databaseSnapshot, passthroughChain()))
+                .isInstanceOf(DatabaseException.class)
+                .hasMessageContaining("Unable to list indexes for collection 'orders'");
+    }
+
+    @Test
+    void listingFetchesIndexesEagerlyWhenIndexesAreIncluded() throws Exception {
+        stubCollections(Arrays.asList(
+                new Document("name", "orders").append("type", "collection"),
+                new Document("name", "users").append("type", "collection")
+        ));
+        when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
+        when(snapshotControl.shouldInclude(liquibase.ext.mongodb.structure.Index.class)).thenReturn(true);
+
+        generator.snapshot(new liquibase.structure.core.Schema(), databaseSnapshot, passthroughChain());
+
+        org.mockito.Mockito.verify(mongoCollection, org.mockito.Mockito.times(2)).listIndexes();
+    }
+
+    @Test
+    void listingSkipsEagerIndexFetchWhenIndexesAreExcluded() throws Exception {
+        stubCollections(Arrays.asList(
+                new Document("name", "orders").append("type", "collection"),
+                new Document("name", "users").append("type", "collection")
+        ));
+        when(snapshotControl.shouldInclude(Collection.class)).thenReturn(true);
+        when(snapshotControl.shouldInclude(liquibase.ext.mongodb.structure.Index.class)).thenReturn(false);
+
+        generator.snapshot(new liquibase.structure.core.Schema(), databaseSnapshot, passthroughChain());
+
+        org.mockito.Mockito.verify(mongoCollection, org.mockito.Mockito.never()).listIndexes();
     }
 }

@@ -26,10 +26,14 @@ The project extends Liquibase's NoSQL support with MongoDB-specific implementati
 ## Testing
 
 - **Run all tests**: `mvn test`
-- **Run integration tests**: `mvn test -Prun-its`
+- **Run integration tests**: `mvn verify -Prun-its` (maven-failsafe-plugin is bound only inside the `run-its` profile, to the `integration-test`/`verify` phases — `mvn test -Prun-its` runs zero integration tests and still reports BUILD SUCCESS)
 - **Run specific test class**: `mvn test -Dtest=ClassName`
 - **Run single test method**: `mvn test -Dtest=ClassName#methodName`
+- **Run a single integration test**: `mvn verify -Prun-its -Dit.test=ClassName -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false`
 - **Test file pattern**: `*Test.java` in `src/test/java/`
+- `-DskipTests` skips failsafe too, so it silently skips integration tests; use `-Dtest=none` to skip only unit tests.
+- Nothing runs these tests automatically. The remote is Harness Code, no Harness pipeline builds this repo, and `.github/workflows/test.yml` (java 8/11/17 x `mongodb: [4]`, `mvn -B clean test verify -Prun-its`) is inherited from upstream GitHub and never fires here, so run them by hand.
+- MongoDB 4.4 is a sufficient server for the whole suite. It already enforces the session-bound cursor rule (`Location50738`) that `AuthorizedListCollectionsIT` guards; measured failing without the fix and passing with it on both 4.4.29 and 7.0.43.
 
 **MongoDB Connection**: Tests require a MongoDB instance. Connection string is configured in `src/test/resources/liquibase.properties`:
 ```
@@ -184,7 +188,7 @@ mvn clean install
 mvn test
 
 # Run integration tests (requires MongoDB)
-mvn test -Prun-its
+mvn verify -Prun-its
 
 # Skip tests during build
 mvn clean install -DskipTests

@@ -22,7 +22,6 @@ package liquibase.ext.mongodb.snapshot;
 
 import com.mongodb.client.ListIndexesIterable;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import liquibase.exception.DatabaseException;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
@@ -38,15 +37,22 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
-import java.util.Iterator;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_ADDITIONAL;
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_DEFAULT;
 import static liquibase.snapshot.SnapshotGenerator.PRIORITY_NONE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -72,10 +78,8 @@ class IndexSnapshotGeneratorTest {
     @Mock
     private ListIndexesIterable<Document> listIndexesIterable;
 
-    @Mock
-    private MongoCursor<Document> cursor;
-
     private final Collection collection = new Collection("orders", null);
+    private final Map<String, Object> scratchData = new HashMap<>();
 
     @BeforeEach
     void setUp() {
@@ -84,13 +88,27 @@ class IndexSnapshotGeneratorTest {
         lenient().when(mongoCollection.listIndexes()).thenReturn(listIndexesIterable);
         lenient().when(databaseSnapshot.getDatabase()).thenReturn(database);
         lenient().when(databaseSnapshot.getSnapshotControl()).thenReturn(snapshotControl);
+        lenient().when(databaseSnapshot.getScratchData(anyString()))
+                .thenAnswer(inv -> scratchData.get(inv.getArgument(0, String.class)));
+        lenient().when(databaseSnapshot.setScratchData(anyString(), any()))
+                .thenAnswer(inv -> scratchData.put(inv.getArgument(0, String.class), inv.getArgument(1)));
     }
 
     private void stubIndexes(List<Document> indexes) {
-        when(listIndexesIterable.iterator()).thenReturn(cursor);
-        final Iterator<Document> it = indexes.iterator();
-        when(cursor.hasNext()).thenAnswer(inv -> it.hasNext());
-        when(cursor.next()).thenAnswer(inv -> it.next());
+        when(listIndexesIterable.into(any())).thenAnswer(inv -> {
+            final java.util.Collection<Document> target = inv.getArgument(0);
+            target.addAll(indexes);
+            return target;
+        });
+    }
+
+    private liquibase.snapshot.SnapshotGeneratorChain passthroughChain() {
+        return new liquibase.snapshot.SnapshotGeneratorChain(null) {
+            @Override
+            public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
+                return example;
+            }
+        };
     }
 
     @Test
@@ -113,12 +131,7 @@ class IndexSnapshotGeneratorTest {
         ));
         when(snapshotControl.shouldInclude(Index.class)).thenReturn(true);
 
-        generator.snapshot(collection, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
-            @Override
-            public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
-                return example;
-            }
-        });
+        generator.snapshot(collection, databaseSnapshot, passthroughChain());
 
         final java.util.Set<Index> indexes = collection.getDatabaseObjects(Index.class);
         assertThat(indexes).extracting(Index::getName).containsExactly("email_unique");
@@ -141,7 +154,7 @@ class IndexSnapshotGeneratorTest {
 
     @Test
     void snapshotIndexPreservesCompoundKeyOrder() throws Exception {
-        stubIndexes(Arrays.asList(
+        stubIndexes(Collections.singletonList(
                 new Document("name", "ab_idx").append("key", Document.parse("{\"a\": 1, \"b\": -1}"))
         ));
 
@@ -156,12 +169,8 @@ class IndexSnapshotGeneratorTest {
         when(mongoCollection.listIndexes()).thenThrow(new com.mongodb.MongoException("boom"));
         when(snapshotControl.shouldInclude(Index.class)).thenReturn(true);
 
-        assertThatThrownBy(() -> generator.snapshot(collection, databaseSnapshot, new liquibase.snapshot.SnapshotGeneratorChain(null) {
-            @Override
-            public <T extends liquibase.structure.DatabaseObject> T snapshot(T example, DatabaseSnapshot snapshot) {
-                return example;
-            }
-        })).isInstanceOf(DatabaseException.class)
+        assertThatThrownBy(() -> generator.snapshot(collection, databaseSnapshot, passthroughChain()))
+                .isInstanceOf(DatabaseException.class)
                 .hasMessageContaining("Unable to list indexes for collection");
     }
 
@@ -173,5 +182,78 @@ class IndexSnapshotGeneratorTest {
         assertThatThrownBy(() -> generator.snapshot(example, databaseSnapshot, null))
                 .isInstanceOf(DatabaseException.class)
                 .hasMessageContaining("Unable to list indexes for collection");
+    }
+
+    @Test
+    void usesEagerlyCachedIndexesWithoutCallingListIndexesAgain() throws Exception {
+        final MongoSnapshotCache.CachedCollection ordersEntry = new MongoSnapshotCache.CachedCollection(
+                new Document("name", "orders").append("type", "collection"),
+                Collections.singletonList(
+                        new Document("name", "email_unique").append("key", new Document("email", 1)).append("unique", true)
+                ));
+        final Map<String, MongoSnapshotCache.CachedCollection> cached = new HashMap<>();
+        cached.put("orders", ordersEntry);
+        databaseSnapshot.setScratchData("liquibase.ext.mongodb.snapshot.collectionsByName", cached);
+        when(snapshotControl.shouldInclude(Index.class)).thenReturn(true);
+
+        generator.snapshot(collection, databaseSnapshot, passthroughChain());
+
+        final java.util.Set<Index> indexes = collection.getDatabaseObjects(Index.class);
+        assertThat(indexes).extracting(Index::getName).containsExactly("email_unique");
+        verify(mongoCollection, never()).listIndexes();
+    }
+
+    @Test
+    void fallsBackToDirectListIndexesWhenCollectionIsNotCached() throws Exception {
+        databaseSnapshot.setScratchData("liquibase.ext.mongodb.snapshot.collectionsByName",
+                new HashMap<String, MongoSnapshotCache.CachedCollection>());
+        stubIndexes(Collections.singletonList(
+                new Document("name", "email_unique").append("key", new Document("email", 1))
+        ));
+        when(snapshotControl.shouldInclude(Index.class)).thenReturn(true);
+
+        generator.snapshot(collection, databaseSnapshot, passthroughChain());
+
+        final java.util.Set<Index> indexes = collection.getDatabaseObjects(Index.class);
+        assertThat(indexes).extracting(Index::getName).containsExactly("email_unique");
+        verify(mongoCollection, times(1)).listIndexes();
+    }
+
+    @Test
+    void fallbackFetchIsWrittenBackSoLaterIndexSnapshotsReuseIt() throws Exception {
+        final Map<String, MongoSnapshotCache.CachedCollection> cached = new HashMap<>();
+        cached.put("orders", new MongoSnapshotCache.CachedCollection(
+                new Document("name", "orders").append("type", "collection"), null));
+        databaseSnapshot.setScratchData("liquibase.ext.mongodb.snapshot.collectionsByName", cached);
+        stubIndexes(Collections.singletonList(
+                new Document("name", "email_unique").append("key", new Document("email", 1))
+        ));
+        when(snapshotControl.shouldInclude(Index.class)).thenReturn(true);
+
+        generator.snapshot(collection, databaseSnapshot, passthroughChain());
+        final Index resnapshotted = generator.snapshot(new Index("email_unique", collection), databaseSnapshot, null);
+
+        assertThat(resnapshotted).isNotNull();
+        assertThat(cached.get("orders").getIndexes()).extracting(d -> d.getString("name"))
+                .containsExactly("email_unique");
+        verify(mongoCollection, times(1)).listIndexes();
+    }
+
+    @Test
+    void fallsBackToDirectListIndexesWhenCollectionWasCachedWithoutIndexes() throws Exception {
+        final Map<String, MongoSnapshotCache.CachedCollection> cached = new HashMap<>();
+        cached.put("orders", new MongoSnapshotCache.CachedCollection(
+                new Document("name", "orders").append("type", "collection"), null));
+        databaseSnapshot.setScratchData("liquibase.ext.mongodb.snapshot.collectionsByName", cached);
+        stubIndexes(Collections.singletonList(
+                new Document("name", "email_unique").append("key", new Document("email", 1))
+        ));
+        when(snapshotControl.shouldInclude(Index.class)).thenReturn(true);
+
+        generator.snapshot(collection, databaseSnapshot, passthroughChain());
+
+        assertThat(collection.getDatabaseObjects(Index.class))
+                .extracting(Index::getName).containsExactly("email_unique");
+        verify(mongoCollection, times(1)).listIndexes();
     }
 }

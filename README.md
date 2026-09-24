@@ -206,6 +206,7 @@ This Harness fork includes several enhancements over the Liquibase MongoDB exten
 - Core Liquibase `generate-changelog` works against MongoDB (same command SQL uses)
 - Snapshots collections and indexes into `createCollection` / `createIndex` changesets
 - Skips views, `system.*`, and Liquibase tracking collections
+- Output is limited to the collections the connecting user has privileges to see (`authorizedCollections: true`); a privilege-limited user gets a shorter changelog with no error, so the visible collection count is logged once per snapshot to make that explicable
 - Replaces the documented Python `MongoDB.py` / `mongoGenerateChangelog.py` workaround
 
 ### **Mongo Native Executor**
