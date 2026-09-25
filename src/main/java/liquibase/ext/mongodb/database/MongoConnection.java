@@ -20,6 +20,7 @@ package liquibase.ext.mongodb.database;
  * #L%
  */
 
+import com.mongodb.AuthenticationMechanism;
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoCredential;
 import com.mongodb.client.MongoClient;
@@ -237,6 +238,12 @@ public class MongoConnection extends AbstractNoSqlConnection {
 
     private String injectCredentials(final String url, final Properties driverProperties) {
 
+        if (isOidcAuthMechanism(url)) {
+            // OIDC connections (e.g. Entra Workload Identity) authenticate via the driver's
+            // MONGODB-OIDC callback, not user:password@ in the URL. Never inject credentials here.
+            return url;
+        }
+
         if (nonNull(driverProperties)) {
 
             final Optional<String> user = Optional.ofNullable(StringUtil.trimToNull(driverProperties.getProperty("user"))).map(MongoConnection::encode);
@@ -252,6 +259,20 @@ public class MongoConnection extends AbstractNoSqlConnection {
             }
         }
         return url;
+    }
+
+    private static boolean isOidcAuthMechanism(final String url) {
+        return url != null && url.toUpperCase().contains("AUTHMECHANISM=MONGODB-OIDC");
+    }
+
+    /**
+     * Whether this connection authenticates via MONGODB-OIDC (e.g. Entra Workload Identity Federation)
+     * rather than a static username/password.
+     */
+    public boolean isOidcAuth() {
+        return ofNullable(connectionString).map(ConnectionString::getCredential)
+                .map(credential -> credential.getAuthenticationMechanism() == AuthenticationMechanism.MONGODB_OIDC)
+                .orElse(false);
     }
 
     private static String encode(String s) {

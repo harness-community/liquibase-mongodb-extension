@@ -1,13 +1,18 @@
 package liquibase.ext.mongodb.tools;
 
+import com.mongodb.ConnectionString;
 import liquibase.changelog.ChangeSet;
 import liquibase.changelog.DatabaseChangeLog;
+import liquibase.exception.UnexpectedLiquibaseException;
+import liquibase.ext.mongodb.database.MongoConnection;
+import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.sql.Sql;
 import liquibase.sql.UnparsedSql;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -74,5 +79,20 @@ class MongoshRunnerTest {
         final MongoshRunner specialRunner = new MongoshRunner(changeSet, specialCharSqlStatements);
 
         assertThat(specialRunner).isNotNull();
+    }
+
+    @Test
+    void createFinalCommandArray_withOidcConnection_shouldFailClosed() {
+        final MongoConnection connection = new MongoConnection();
+        connection.setConnectionString(new ConnectionString(
+                "mongodb://localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s"));
+
+        final MongoLiquibaseDatabase database = new MongoLiquibaseDatabase();
+        database.setConnection(connection);
+
+        assertThatExceptionOfType(UnexpectedLiquibaseException.class)
+                .isThrownBy(() -> runner.createFinalCommandArray(database))
+                .withMessageContaining("mongosh")
+                .withMessageContaining("OIDC");
     }
 }
