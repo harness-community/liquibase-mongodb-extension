@@ -56,11 +56,13 @@ public class MongoshRunner extends ExecuteShellCommandChange {
     private static final String MONGOSH_CONF = "liquibase.mongosh.conf";
     private static final ResourceBundle MONGOSH_BUNDLE;
     private static final String MSG_UNABLE_TO_RUN_MONGOSH;
+    private static final String MSG_MONGOSH_UNSUPPORTED_WITH_OIDC;
 
     static {
         try {
             MONGOSH_BUNDLE = ResourceBundle.getBundle("liquibase/i18n/liquibase-mongosh");
             MSG_UNABLE_TO_RUN_MONGOSH = MONGOSH_BUNDLE.getString("unable.to.run.mongosh");
+            MSG_MONGOSH_UNSUPPORTED_WITH_OIDC = MONGOSH_BUNDLE.getString("mongosh.unsupported.with.oidc");
         } catch (Exception e) {
             throw new RuntimeException("Failed to load mongosh resource bundle", e);
         }
@@ -88,6 +90,11 @@ public class MongoshRunner extends ExecuteShellCommandChange {
 
     @Override
     protected List<String> createFinalCommandArray(Database database) {
+        MongoConnection connection = (MongoConnection) ((MongoLiquibaseDatabase) database).getConnection();
+        if (connection.isOidcAuth()) {
+            throw new UnexpectedLiquibaseException(MSG_MONGOSH_UNSUPPORTED_WITH_OIDC);
+        }
+
         loadMongoshProperties();
         List<String> commandArray = super.createFinalCommandArray(database);
 
@@ -102,8 +109,6 @@ public class MongoshRunner extends ExecuteShellCommandChange {
         }
 
         if (sqlStrings != null) {
-            MongoLiquibaseDatabase mongoDatabase = (MongoLiquibaseDatabase) database;
-            MongoConnection connection = (MongoConnection) mongoDatabase.getConnection();
             commandArray.add(connection.getConnectionString().getConnectionString());
 
             if (outFile != null) {

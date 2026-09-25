@@ -276,4 +276,38 @@ class MongoConnectionTest {
         assertThat(connection.getVisibleUrl()).isEmpty();
     }
 
+    @SneakyThrows
+    @Test
+    void isOidcAuthFalseBeforeOpenOrForNonOidcConnections() {
+        assertThat(connection.isOidcAuth()).isFalse();
+
+        when(driverMock.connect(any(ConnectionString.class), anyString())).thenReturn(clientMock);
+        when(clientMock.getDatabase(any())).thenReturn(databaseMock);
+        when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
+
+        connection.open("mongodb://user1:password1@localhost:27017/test_db", driverMock, null);
+        assertThat(connection.isOidcAuth()).isFalse();
+    }
+
+    @SneakyThrows
+    @Test
+    void injectCredentialsSkippedAndOidcAuthTrueForOidcConnections() {
+        when(driverMock.connect(any(ConnectionString.class), anyString())).thenReturn(clientMock);
+        when(clientMock.getDatabase(any())).thenReturn(databaseMock);
+        when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
+
+        // The Entra/Atlas WIF path never provides a username/password: the driver's
+        // MONGODB-OIDC callback supplies the token. Even if driverProperties carried a
+        // (stale) user/password, they must never be injected into an OIDC connection string.
+        Properties properties = new Properties();
+        properties.setProperty("user", "should-be-ignored");
+        properties.setProperty("password", "should-be-ignored");
+
+        connection.open("mongodb://localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s", driverMock, properties);
+
+        assertThat(connection.isOidcAuth()).isTrue();
+        assertThat(connection.getConnectionString().getConnectionString()).doesNotContain("should-be-ignored");
+        assertThat(connection.getConnectionUserName()).isEmpty();
+    }
+
 }
