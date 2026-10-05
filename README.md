@@ -105,6 +105,16 @@ mongodb+srv://server.example.com/
 mongodb+srv://:@cluster0.example.com/testdb?authSource=$external&authMechanism=MONGODB-AWS
 `
 
+### OIDC / Microsoft Entra ID (MongoDB Atlas Workload Identity Federation)
+
+`
+mongodb+srv://cluster0.example.com/testdb?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s
+`
+
+* Uses the Mongo Java Driver's built-in `MONGODB-OIDC` support (driver 5.3+), which re-reads the access token from `AZURE_FEDERATED_TOKEN_FILE` on each authentication, including server-requested reauthentication.
+* When `authMechanism=MONGODB-OIDC` is set, any `username`/`password` Liquibase properties are ignored and are never added to the connection string.
+* `mongo` and `mongoFile` changes (mongosh) are **not supported** on OIDC connections and fail with a clear error, because Atlas Workload Identity Federation only works through the drivers, not mongosh. Use the native change types or `executeNative` instead.
+
 <a name="getting-started"></a>
 ## Getting Started
 

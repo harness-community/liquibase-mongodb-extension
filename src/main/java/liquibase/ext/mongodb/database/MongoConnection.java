@@ -46,6 +46,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.sql.Driver;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -239,8 +240,7 @@ public class MongoConnection extends AbstractNoSqlConnection {
     private String injectCredentials(final String url, final Properties driverProperties) {
 
         if (isOidcAuthMechanism(url)) {
-            // OIDC connections (e.g. Entra Workload Identity) authenticate via the driver's
-            // MONGODB-OIDC callback, not user:password@ in the URL. Never inject credentials here.
+            // the driver's OIDC provider supplies the token; user:password@ would break the handshake
             return url;
         }
 
@@ -262,13 +262,9 @@ public class MongoConnection extends AbstractNoSqlConnection {
     }
 
     private static boolean isOidcAuthMechanism(final String url) {
-        return url != null && url.toUpperCase().contains("AUTHMECHANISM=MONGODB-OIDC");
+        return url != null && url.toUpperCase(Locale.ROOT).contains("AUTHMECHANISM=MONGODB-OIDC");
     }
 
-    /**
-     * Whether this connection authenticates via MONGODB-OIDC (e.g. Entra Workload Identity Federation)
-     * rather than a static username/password.
-     */
     public boolean isOidcAuth() {
         return ofNullable(connectionString).map(ConnectionString::getCredential)
                 .map(credential -> credential.getAuthenticationMechanism() == AuthenticationMechanism.MONGODB_OIDC)
