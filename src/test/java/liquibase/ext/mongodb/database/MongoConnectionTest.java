@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Locale;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -296,9 +297,6 @@ class MongoConnectionTest {
         when(clientMock.getDatabase(any())).thenReturn(databaseMock);
         when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
 
-        // The Entra/Atlas WIF path never provides a username/password: the driver's
-        // MONGODB-OIDC callback supplies the token. Even if driverProperties carried a
-        // (stale) user/password, they must never be injected into an OIDC connection string.
         Properties properties = new Properties();
         properties.setProperty("user", "should-be-ignored");
         properties.setProperty("password", "should-be-ignored");
@@ -308,6 +306,28 @@ class MongoConnectionTest {
         assertThat(connection.isOidcAuth()).isTrue();
         assertThat(connection.getConnectionString().getConnectionString()).doesNotContain("should-be-ignored");
         assertThat(connection.getConnectionUserName()).isEmpty();
+    }
+
+    @SneakyThrows
+    @Test
+    void injectCredentialsSkippedForOidcUnderTurkishLocale() {
+        when(driverMock.connect(any(ConnectionString.class), anyString())).thenReturn(clientMock);
+        when(clientMock.getDatabase(any())).thenReturn(databaseMock);
+        when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
+
+        Properties properties = new Properties();
+        properties.setProperty("user", "should-be-ignored");
+
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(new Locale("tr", "TR"));
+            connection.open("mongodb://localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s", driverMock, properties);
+        } finally {
+            Locale.setDefault(original);
+        }
+
+        assertThat(connection.isOidcAuth()).isTrue();
+        assertThat(connection.getConnectionString().getConnectionString()).doesNotContain("should-be-ignored");
     }
 
 }
