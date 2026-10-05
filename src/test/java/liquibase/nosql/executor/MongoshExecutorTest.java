@@ -1,13 +1,16 @@
 package liquibase.nosql.executor;
 
+import com.mongodb.ConnectionString;
 import liquibase.changelog.ChangeSet;
 import liquibase.database.Database;
 import liquibase.exception.DatabaseException;
 import liquibase.exception.ValidationErrors;
 import liquibase.ext.mongodb.change.CreateCollectionChange;
 import liquibase.ext.mongodb.change.MongoshChange;
+import liquibase.ext.mongodb.database.MongoConnection;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.statement.MongoshStatement;
+import liquibase.ext.mongodb.tools.MongoshRunner;
 import liquibase.sql.visitor.SqlVisitor;
 import liquibase.statement.SqlStatement;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +59,29 @@ class MongoshExecutorTest {
         final ValidationErrors errors = executor.validate(changeSet);
 
         assertThat(errors.hasErrors()).isFalse();
+    }
+
+    @Test
+    void validate_withOidcConnection_shouldReturnValidationError() {
+        final MongoConnection connection = new MongoConnection();
+        connection.setConnectionString(new ConnectionString(
+                "mongodb://localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s"));
+        when(database.getConnection()).thenReturn(connection);
+        when(changeSet.getChanges()).thenReturn(Arrays.asList(new MongoshChange()));
+
+        final ValidationErrors errors = executor.validate(changeSet);
+
+        assertThat(errors.getErrorMessages()).containsExactly(MongoshRunner.MSG_MONGOSH_UNSUPPORTED_WITH_OIDC);
+    }
+
+    @Test
+    void validate_withNonOidcConnection_shouldReturnNoErrors() {
+        final MongoConnection connection = new MongoConnection();
+        connection.setConnectionString(new ConnectionString("mongodb://user1:password1@localhost:27017/test_db"));
+        when(database.getConnection()).thenReturn(connection);
+        when(changeSet.getChanges()).thenReturn(Arrays.asList(new MongoshChange()));
+
+        assertThat(executor.validate(changeSet).hasErrors()).isFalse();
     }
 
     @Test

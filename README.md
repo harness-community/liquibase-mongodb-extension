@@ -112,8 +112,8 @@ mongodb+srv://cluster0.example.com/testdb?authMechanism=MONGODB-OIDC&authMechani
 `
 
 * Uses the Mongo Java Driver's built-in `MONGODB-OIDC` support (driver 5.3+), which re-reads the access token from `AZURE_FEDERATED_TOKEN_FILE` on each authentication, including server-requested reauthentication.
-* When `authMechanism=MONGODB-OIDC` is set, any `username`/`password` Liquibase properties are ignored and are never added to the connection string.
-* `mongo` and `mongoFile` changes (mongosh) are **not supported** on OIDC connections and fail with a clear error, because Atlas Workload Identity Federation only works through the drivers, not mongosh. Use the native change types or `executeNative` instead.
+* When `authMechanism=MONGODB-OIDC` is set, any `username`/`password` Liquibase properties are ignored and are never added to the connection string. Credentials written into the URL itself are rejected before connecting: a password always, and a username with `ENVIRONMENT:k8s`.
+* `mongo` and `mongoFile` changes (mongosh) are **not supported** on OIDC connections and fail changelog validation before anything is deployed, because Atlas Workload Identity Federation only works through the drivers, not mongosh. Use the native change types or `executeNative` instead.
 
 <a name="getting-started"></a>
 ## Getting Started
