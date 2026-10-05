@@ -30,6 +30,7 @@ import liquibase.exception.ValidationErrors;
 import liquibase.executor.AbstractExecutor;
 import liquibase.ext.mongodb.change.MongoshChange;
 import liquibase.ext.mongodb.change.MongoshFileChange;
+import liquibase.ext.mongodb.database.MongoConnection;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.statement.MongoshStatement;
 import liquibase.ext.mongodb.tools.MongoshRunner;
@@ -74,12 +75,20 @@ public class MongoshExecutor extends AbstractExecutor {
         ValidationErrors validationErrors = new ValidationErrors();
 
         if (changeSet != null) {
+            if (isOidcConnection()) {
+                validationErrors.addError(MongoshRunner.MSG_MONGOSH_UNSUPPORTED_WITH_OIDC);
+            }
             for (Change change : changeSet.getChanges()) {
                 validateChange(changeSet, validationErrors, change, EXECUTOR_NAME);
             }
         }
 
         return validationErrors;
+    }
+
+    private boolean isOidcConnection() {
+        return database != null && database.getConnection() instanceof MongoConnection
+                && ((MongoConnection) database.getConnection()).isOidcAuth();
     }
 
     @SuppressWarnings("unchecked")

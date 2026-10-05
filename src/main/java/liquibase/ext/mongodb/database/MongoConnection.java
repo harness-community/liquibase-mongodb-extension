@@ -46,7 +46,6 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.sql.Driver;
 import java.util.Collections;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -164,6 +163,7 @@ public class MongoConnection extends AbstractNoSqlConnection {
             final String urlWithCredentials = injectCredentials(StringUtil.trimToEmpty(url), driverProperties);
 
             this.connectionString = new ConnectionString(resolveRetryWrites(urlWithCredentials));
+            rejectUserNameForK8sOidc(this.connectionString);
 
             this.mongoClient = ((MongoClientDriver) driverObject).connect(connectionString, getAppName(driverProperties, false));
 
@@ -262,7 +262,27 @@ public class MongoConnection extends AbstractNoSqlConnection {
     }
 
     private static boolean isOidcAuthMechanism(final String url) {
-        return url != null && url.toUpperCase(Locale.ROOT).contains("AUTHMECHANISM=MONGODB-OIDC");
+        if (url == null || url.indexOf('?') < 0) {
+            return false;
+        }
+        for (String param : url.substring(url.indexOf('?') + 1).split("[&;]")) {
+            int eq = param.indexOf('=');
+            if (eq > 0 && param.substring(0, eq).equalsIgnoreCase("authMechanism")
+                    && param.substring(eq + 1).equals(AuthenticationMechanism.MONGODB_OIDC.getMechanismName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ENVIRONMENT:k8s reads the projected token file and has no use for a username; fail before connecting
+    private static void rejectUserNameForK8sOidc(final ConnectionString connectionString) {
+        final MongoCredential credential = connectionString.getCredential();
+        if (credential != null && credential.getAuthenticationMechanism() == AuthenticationMechanism.MONGODB_OIDC
+                && credential.getUserName() != null
+                && "k8s".equals(credential.getMechanismProperty(MongoCredential.ENVIRONMENT_KEY, null))) {
+            throw new IllegalArgumentException("A username must not be specified in the URL for MONGODB-OIDC with ENVIRONMENT:k8s");
+        }
     }
 
     public boolean isOidcAuth() {

@@ -56,7 +56,7 @@ public class MongoshRunner extends ExecuteShellCommandChange {
     private static final String MONGOSH_CONF = "liquibase.mongosh.conf";
     private static final ResourceBundle MONGOSH_BUNDLE;
     private static final String MSG_UNABLE_TO_RUN_MONGOSH;
-    private static final String MSG_MONGOSH_UNSUPPORTED_WITH_OIDC;
+    public static final String MSG_MONGOSH_UNSUPPORTED_WITH_OIDC;
 
     static {
         try {

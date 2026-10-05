@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -328,6 +329,73 @@ class MongoConnectionTest {
 
         assertThat(connection.isOidcAuth()).isTrue();
         assertThat(connection.getConnectionString().getConnectionString()).doesNotContain("should-be-ignored");
+    }
+
+
+    @SneakyThrows
+    @Test
+    void injectCredentialsSkippedForLowercaseAuthMechanismKey() {
+        when(driverMock.connect(any(ConnectionString.class), anyString())).thenReturn(clientMock);
+        when(clientMock.getDatabase(any())).thenReturn(databaseMock);
+        when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
+
+        Properties properties = new Properties();
+        properties.setProperty("user", "should-be-ignored");
+
+        connection.open("mongodb://localhost:27017/test_db?authmechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s", driverMock, properties);
+
+        assertThat(connection.isOidcAuth()).isTrue();
+        assertThat(connection.getConnectionString().getConnectionString()).doesNotContain("should-be-ignored");
+    }
+
+    @SneakyThrows
+    @Test
+    void injectCredentialsSkippedForAtlasSrvOidcUrl() {
+        when(driverMock.connect(any(ConnectionString.class), anyString())).thenReturn(clientMock);
+        when(clientMock.getDatabase(any())).thenReturn(databaseMock);
+        when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
+
+        Properties properties = new Properties();
+        properties.setProperty("user", "should-be-ignored");
+        properties.setProperty("password", "should-be-ignored");
+
+        connection.open("mongodb+srv://mongos0.example.com/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s", driverMock, properties);
+
+        assertThat(connection.isOidcAuth()).isTrue();
+        assertThat(connection.getConnectionString().getConnectionString()).doesNotContain("should-be-ignored");
+    }
+
+    @Test
+    void openFailsForOidcUrlWithUserAndPassword() {
+        assertThatExceptionOfType(DatabaseException.class)
+                .isThrownBy(() -> connection.open("mongodb://user1:password1@localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s", driverMock, null))
+                .withRootCauseInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(driverMock);
+    }
+
+    @Test
+    void openFailsForK8sOidcUrlWithUserName() {
+        assertThatExceptionOfType(DatabaseException.class)
+                .isThrownBy(() -> connection.open("mongodb://user1@localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s", driverMock, null))
+                .havingRootCause().withMessageContaining("username must not be specified");
+        verifyNoInteractions(driverMock);
+    }
+
+    @SneakyThrows
+    @Test
+    void oidcTextInsideAnotherParamIsNotTreatedAsOidc() {
+        when(driverMock.connect(any(ConnectionString.class), anyString())).thenReturn(clientMock);
+        when(clientMock.getDatabase(any())).thenReturn(databaseMock);
+        when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
+
+        Properties properties = new Properties();
+        properties.setProperty("user", "user1");
+        properties.setProperty("password", "password1");
+
+        connection.open("mongodb://localhost:27017/test_db?appName=authMechanism=MONGODB-OIDC", driverMock, properties);
+
+        assertThat(connection.isOidcAuth()).isFalse();
+        assertThat(connection.getConnectionUserName()).isEqualTo("user1");
     }
 
 }
