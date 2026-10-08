@@ -398,4 +398,51 @@ class MongoConnectionTest {
         assertThat(connection.getConnectionUserName()).isEqualTo("user1");
     }
 
+    @SneakyThrows
+    @Test
+    void openAllowsUserNameForNonK8sOidc() {
+        when(driverMock.connect(any(ConnectionString.class), anyString())).thenReturn(clientMock);
+        when(clientMock.getDatabase(any())).thenReturn(databaseMock);
+        when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
+
+        connection.open("mongodb://client-id@localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:azure,TOKEN_RESOURCE:api://atlas", driverMock, null);
+
+        assertThat(connection.isOidcAuth()).isTrue();
+        assertThat(connection.getConnectionUserName()).isEqualTo("client-id");
+        verify(driverMock).connect(any(ConnectionString.class), anyString());
+    }
+
+    @SneakyThrows
+    @Test
+    void urlEncodedOidcValueIsTreatedAsOidc() {
+        when(driverMock.connect(any(ConnectionString.class), anyString())).thenReturn(clientMock);
+        when(clientMock.getDatabase(any())).thenReturn(databaseMock);
+        when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
+
+        Properties properties = new Properties();
+        properties.setProperty("user", "should-be-ignored");
+
+        connection.open("mongodb://localhost:27017/test_db?authMechanism=MONGODB%2DOIDC&authMechanismProperties=ENVIRONMENT:k8s", driverMock, properties);
+
+        assertThat(connection.isOidcAuth()).isTrue();
+        assertThat(connection.getConnectionString().getConnectionString()).doesNotContain("should-be-ignored");
+    }
+
+    @SneakyThrows
+    @Test
+    void duplicateAuthMechanismFollowsDriverLastValueWins() {
+        when(driverMock.connect(any(ConnectionString.class), anyString())).thenReturn(clientMock);
+        when(clientMock.getDatabase(any())).thenReturn(databaseMock);
+        when(databaseMock.withCodecRegistry(any())).thenReturn(databaseMock);
+
+        Properties properties = new Properties();
+        properties.setProperty("user", "user1");
+        properties.setProperty("password", "password1");
+
+        connection.open("mongodb://localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanism=SCRAM-SHA-256", driverMock, properties);
+
+        assertThat(connection.isOidcAuth()).isFalse();
+        assertThat(connection.getConnectionUserName()).isEqualTo("user1");
+    }
+
 }

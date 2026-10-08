@@ -90,8 +90,7 @@ public class MongoshRunner extends ExecuteShellCommandChange {
 
     @Override
     protected List<String> createFinalCommandArray(Database database) {
-        MongoConnection connection = (MongoConnection) ((MongoLiquibaseDatabase) database).getConnection();
-        if (connection.isOidcAuth()) {
+        if (database.getConnection() instanceof MongoConnection && ((MongoConnection) database.getConnection()).isOidcAuth()) {
             throw new UnexpectedLiquibaseException(MSG_MONGOSH_UNSUPPORTED_WITH_OIDC);
         }
 
@@ -109,6 +108,8 @@ public class MongoshRunner extends ExecuteShellCommandChange {
         }
 
         if (sqlStrings != null) {
+            MongoLiquibaseDatabase mongoDatabase = (MongoLiquibaseDatabase) database;
+            MongoConnection connection = (MongoConnection) mongoDatabase.getConnection();
             commandArray.add(connection.getConnectionString().getConnectionString());
 
             if (outFile != null) {
