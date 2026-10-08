@@ -261,34 +261,31 @@ public class MongoConnection extends AbstractNoSqlConnection {
         return url;
     }
 
+    // the driver's own parse is the single source of truth; an unparseable URL can't be OIDC yet
     private static boolean isOidcAuthMechanism(final String url) {
-        if (url == null || url.indexOf('?') < 0) {
+        try {
+            return isOidc(new ConnectionString(url));
+        } catch (IllegalArgumentException e) {
             return false;
         }
-        for (String param : url.substring(url.indexOf('?') + 1).split("[&;]")) {
-            int eq = param.indexOf('=');
-            if (eq > 0 && param.substring(0, eq).equalsIgnoreCase("authMechanism")
-                    && param.substring(eq + 1).equals(AuthenticationMechanism.MONGODB_OIDC.getMechanismName())) {
-                return true;
-            }
-        }
-        return false;
+    }
+
+    private static boolean isOidc(final ConnectionString connectionString) {
+        final MongoCredential credential = connectionString.getCredential();
+        return credential != null && credential.getAuthenticationMechanism() == AuthenticationMechanism.MONGODB_OIDC;
     }
 
     // ENVIRONMENT:k8s reads the projected token file and has no use for a username; fail before connecting
     private static void rejectUserNameForK8sOidc(final ConnectionString connectionString) {
         final MongoCredential credential = connectionString.getCredential();
-        if (credential != null && credential.getAuthenticationMechanism() == AuthenticationMechanism.MONGODB_OIDC
-                && credential.getUserName() != null
+        if (isOidc(connectionString) && credential.getUserName() != null
                 && "k8s".equals(credential.getMechanismProperty(MongoCredential.ENVIRONMENT_KEY, null))) {
             throw new IllegalArgumentException("A username must not be specified in the URL for MONGODB-OIDC with ENVIRONMENT:k8s");
         }
     }
 
     public boolean isOidcAuth() {
-        return ofNullable(connectionString).map(ConnectionString::getCredential)
-                .map(credential -> credential.getAuthenticationMechanism() == AuthenticationMechanism.MONGODB_OIDC)
-                .orElse(false);
+        return connectionString != null && isOidc(connectionString);
     }
 
     private static String encode(String s) {
