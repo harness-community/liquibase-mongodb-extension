@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.liquibase</groupId>
+    <artifactId>liquibase-core</artifactId>
+    <version>4.33.0-harness</version>
+    <packaging>jar</packaging>
+    <description>Empty stub so liquibase-parent-pom does not pull upstream liquibase-core. Real API is io.harness:dbops-liquibase-core.</description>
+</project>

@@ -22,9 +22,11 @@ package liquibase.ext.mongodb.lockservice;
 
 import liquibase.exception.LockException;
 import liquibase.ext.AbstractMongoIntegrationTest;
+import liquibase.lockservice.ChangeLogLockOwner;
 import liquibase.lockservice.DatabaseChangeLogLock;
 import liquibase.lockservice.LockServiceFactory;
 import lombok.SneakyThrows;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -37,8 +39,14 @@ class MongoLockServiceIT extends AbstractMongoIntegrationTest {
     @BeforeEach
     protected void setUpEach() {
         super.setUpEach();
+        System.setProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX, "pfx");
         lockService = (MongoLockService) LockServiceFactory.getInstance().getLockService(database);
         lockService.reset();
+    }
+
+    @AfterEach
+    void tearDownPrefix() {
+        System.clearProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX);
     }
 
     @SneakyThrows

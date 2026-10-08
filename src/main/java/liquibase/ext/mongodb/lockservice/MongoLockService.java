@@ -67,10 +67,12 @@ public class MongoLockService extends AbstractNoSqlLockService<MongoLiquibaseDat
     }
 
     @Override
-    protected int replaceLock(final boolean locked) throws DatabaseException {
+    protected int replaceLock(final boolean locked, final String stealPreviousLockedBy, final boolean forceUnlock)
+            throws DatabaseException {
         try {
             return getExecutor().update(
-                    new ReplaceChangeLogLockStatement(getDatabaseChangeLogLockTableName(), locked)
+                    new ReplaceChangeLogLockStatement(
+                            getDatabaseChangeLogLockTableName(), locked, stealPreviousLockedBy, forceUnlock)
             );
         } catch (DatabaseException e) {
             // Mongo driver does not allow to release lock if thread is interrupted

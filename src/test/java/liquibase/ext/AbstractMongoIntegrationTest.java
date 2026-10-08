@@ -28,6 +28,7 @@ import liquibase.executor.ExecutorService;
 import liquibase.ext.mongodb.database.MongoConnection;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.statement.DropAllCollectionsStatement;
+import liquibase.lockservice.ChangeLogLockOwner;
 import liquibase.lockservice.LockServiceFactory;
 import liquibase.nosql.executor.NoSqlExecutor;
 import lombok.SneakyThrows;
@@ -41,6 +42,9 @@ import static liquibase.nosql.executor.NoSqlExecutor.EXECUTOR_NAME;
 @TestInstance(TestInstance.Lifecycle.PER_METHOD)
 public abstract class AbstractMongoIntegrationTest {
 
+    /** Default for ITs; production injects via drone/dbops. Subclasses may override. */
+    private static final String TEST_LOCKEDBY_PREFIX = "test";
+
     protected MongoConnection connection;
     protected NoSqlExecutor executor;
     protected MongoLiquibaseDatabase database;
@@ -49,6 +53,8 @@ public abstract class AbstractMongoIntegrationTest {
     @SneakyThrows
     @BeforeEach
     protected void setUpEach() {
+        // Harness ChangeLogLockOwner.format() requires non-empty HARNESS_LOCKEDBY_PREFIX
+        System.setProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX, TEST_LOCKEDBY_PREFIX);
 
         resetServices();
         final String url = loadProperty(PROPERTY_FILE, DB_CONNECTION_PATH);
@@ -63,9 +69,13 @@ public abstract class AbstractMongoIntegrationTest {
     @SneakyThrows
     @AfterEach
     protected void tearDownEach() {
-        executor.execute(new DropAllCollectionsStatement());
-        connection.close();
-        resetServices();
+        try {
+            executor.execute(new DropAllCollectionsStatement());
+            connection.close();
+            resetServices();
+        } finally {
+            System.clearProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX);
+        }
     }
 
     @SneakyThrows

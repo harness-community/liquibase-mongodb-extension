@@ -20,14 +20,11 @@ package liquibase.ext.mongodb.lockservice;
  * #L%
  */
 
-import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.lockservice.DatabaseChangeLogLock;
-import liquibase.util.NetUtil;
+import liquibase.lockservice.ChangeLogLockOwner;
 import lombok.Getter;
 
 import java.util.Date;
-
-import static java.util.Optional.ofNullable;
 
 public class MongoChangeLogLock extends DatabaseChangeLogLock {
 
@@ -56,14 +53,7 @@ public class MongoChangeLogLock extends DatabaseChangeLogLock {
     }
 
     public static String formLockedBy() {
-        try {
-            final String HOST_NAME = NetUtil.getLocalHostName();
-            final String HOST_DESCRIPTION = ofNullable(System.getProperty("liquibase.hostDescription")).map(v -> "#" + v).orElse("");
-            final String HOST_ADDRESS = NetUtil.getLocalHostAddress();
-            return HOST_NAME + HOST_DESCRIPTION + " (" + HOST_ADDRESS + ")";
-        } catch (Exception e) {
-            throw new UnexpectedLiquibaseException(e);
-        }
+        return ChangeLogLockOwner.format();
     }
 
 }

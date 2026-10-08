@@ -31,6 +31,7 @@ import liquibase.executor.Executor;
 import liquibase.executor.ExecutorService;
 import liquibase.executor.LoggingExecutor;
 import liquibase.lockservice.DatabaseChangeLogLock;
+import liquibase.lockservice.ChangeLogLockOwner;
 import liquibase.lockservice.LockService;
 import liquibase.logging.Logger;
 import liquibase.nosql.database.AbstractNoSqlDatabase;
@@ -183,31 +184,69 @@ public abstract class AbstractNoSqlLockService<D extends AbstractNoSqlDatabase> 
             database.rollback();
             this.init();
 
-            if (isLocked()) {
-                return false;
-            } else {
-                getLogger().info("Lock Database");
+            final boolean currentlyLocked = Boolean.TRUE.equals(isLocked());
+            boolean harnessRecovery = ChangeLogLockOwner.isHarnessLockRecoveryEnabled();
+            getLogger().info("Harness changelog lock recovery is " + (harnessRecovery ? "enabled" : "disabled")
+                    + " (" + ChangeLogLockOwner.ENV_HARNESS_LOCK_RECOVERY + ")");
+            String previousLockedBy = null;
+            boolean steal = false;
 
-                final int rowsUpdated = replaceLock(true);
-
-                if (rowsUpdated > 1) {
-                    throw new LockException("Did not update change log lock correctly");
-                }
-                if (rowsUpdated == 0) {
-                    // another node was faster
+            if (currentlyLocked) {
+                // Recovery off → wait (do not read lockedBy / queryLocks)
+                if (!harnessRecovery) {
                     return false;
                 }
-
-                database.commit();
-                getLogger().info("Successfully Acquired Change Log Lock");
-
-                this.hasChangeLogLock = true;
-
-                // TODO: Not sure what is the purpose of this
-                // this.database.setCanCacheLiquibaseTableInfo(true);
-
-                return true;
+                previousLockedBy = currentLockedBy();
+                String refuseReason = ChangeLogLockOwner.stealRefuseReason(previousLockedBy);
+                if (refuseReason != null) {
+                    String waitMsg = "Not reclaiming change log lock held by " + previousLockedBy
+                            + " (" + refuseReason + "); waiting for lock";
+                    getLogger().info(waitMsg);
+                    Scope.getCurrentScope().getUI().sendMessage(waitMsg);
+                    return false;
+                }
+                steal = true;
             }
+
+            getLogger().info("Lock Database");
+
+            // Pass previous owner for exact lockedBy steal branch (null = free-row only)
+            final int rowsUpdated = replaceLock(true, steal ? previousLockedBy : null, false);
+
+            if (rowsUpdated > 1) {
+                throw new LockException("Did not update change log lock correctly");
+            }
+            if (rowsUpdated == 0) {
+                // another node was faster, or WHERE no longer matched
+                if (steal) {
+                    String missedMsg = "Could not reclaim Harness-owned change log lock previously held by "
+                            + previousLockedBy + " (0 rows matched; lock may have changed)";
+                    getLogger().info(missedMsg);
+                    Scope.getCurrentScope().getUI().sendMessage(missedMsg);
+                }
+                return false;
+            }
+
+            database.commit();
+
+            boolean stole = steal;
+            if (stole) {
+                String reclaimMsg = "Successfully acquired change log lock by reclaiming Harness-owned lock previously held by "
+                        + previousLockedBy;
+                getLogger().info(reclaimMsg);
+                Scope.getCurrentScope().getUI().sendMessage(reclaimMsg);
+            } else {
+                String acquiredMsg = "Successfully Acquired Change Log Lock";
+                getLogger().info(acquiredMsg);
+                Scope.getCurrentScope().getUI().sendMessage(acquiredMsg);
+            }
+
+            this.hasChangeLogLock = true;
+
+            // TODO: Not sure what is the purpose of this
+            // this.database.setCanCacheLiquibaseTableInfo(true);
+
+            return true;
         } catch (final Exception e) {
             throw new LockException(e);
         } finally {
@@ -217,6 +256,17 @@ public abstract class AbstractNoSqlLockService<D extends AbstractNoSqlDatabase> 
                 getLogger().severe("Error on acquire change log lock Rollback.", e);
             }
         }
+    }
+
+    /**
+     * Current {@code lockedBy} of the held lock row, or null if none / unlocked.
+     */
+    private String currentLockedBy() throws DatabaseException {
+        List<DatabaseChangeLogLock> locks = queryLocks();
+        if (locks == null || locks.isEmpty()) {
+            return null;
+        }
+        return locks.get(0).getLockedBy();
     }
 
     @Override
@@ -233,7 +283,7 @@ public abstract class AbstractNoSqlLockService<D extends AbstractNoSqlDatabase> 
 
                 database.rollback();
 
-                final int rowsUpdated = replaceLock(false);
+                final int rowsUpdated = replaceLock(false, null, false);
 
                 if (rowsUpdated != 1) {
                     throw new LockException("Did not update change log lock correctly.\n\n" +
@@ -274,7 +324,34 @@ public abstract class AbstractNoSqlLockService<D extends AbstractNoSqlDatabase> 
     @Override
     public void forceReleaseLock() throws LockException, DatabaseException {
         init();
-        releaseLock();
+        try {
+            if (isOutputOnlyMode()) {
+                return;
+            }
+            if (hasDatabaseChangeLogLockTable()) {
+                getLogger().info("Force Release Database Lock");
+                database.rollback();
+                // Unconditional unlock (JDBC/Cassandra release-locks semantics) — not host-matched
+                final int rowsUpdated = replaceLock(false, null, true);
+                if (rowsUpdated != 1) {
+                    throw new LockException("Did not update change log lock correctly.\n\n" +
+                            rowsUpdated +
+                            " rows were updated instead of the expected 1 row");
+                }
+                database.commit();
+            }
+        } catch (Exception e) {
+            throw new LockException(e);
+        } finally {
+            try {
+                this.hasChangeLogLock = false;
+                database.setCanCacheLiquibaseTableInfo(false);
+                getLogger().info("Successfully released change log lock");
+                database.rollback();
+            } catch (DatabaseException e) {
+                getLogger().severe("Error on force-released change log lock Rollback.", e);
+            }
+        }
     }
 
     @Override
@@ -355,7 +432,14 @@ public abstract class AbstractNoSqlLockService<D extends AbstractNoSqlDatabase> 
 
     protected abstract Boolean isLocked() throws DatabaseException;
 
-    protected abstract int replaceLock(boolean locked) throws DatabaseException;
+    /**
+     * @param locked                 true to acquire, false to release
+     * @param stealPreviousLockedBy  when acquiring a stuck Harness lock, the exact current {@code lockedBy}
+     *                               to match (Cassandra-style); null for free-row acquire / unlock
+     * @param forceUnlock            when releasing, skip host ownership check ({@code release-locks})
+     */
+    protected abstract int replaceLock(boolean locked, String stealPreviousLockedBy, boolean forceUnlock)
+            throws DatabaseException;
 
     protected abstract List<DatabaseChangeLogLock> queryLocks() throws DatabaseException;
 

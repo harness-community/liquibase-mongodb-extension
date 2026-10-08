@@ -16,6 +16,7 @@ import liquibase.ext.mongodb.statement.CountCollectionByNameStatement;
 import liquibase.ext.mongodb.statement.DropCollectionStatement;
 import liquibase.ext.mongodb.statement.FindAllStatement;
 import liquibase.lockservice.DatabaseChangeLogLock;
+import liquibase.lockservice.ChangeLogLockOwner;
 import liquibase.lockservice.LockService;
 import liquibase.lockservice.LockServiceFactory;
 import liquibase.nosql.executor.NoSqlExecutor;
@@ -488,6 +489,96 @@ class MongoLockServiceTest {
 
     @SneakyThrows
     @Test
+    void acquireLock_harnessOwned_stealsExactPreviousOwner() {
+        System.setProperty(ChangeLogLockOwner.ENV_HARNESS_LOCK_RECOVERY, "true");
+        System.setProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX, "pfx");
+        try {
+            String previous = "HI|pfx|plan-old|dead-host (10.0.0.1)";
+            final MongoChangeLogLock lockedLock = new MongoChangeLogLock(1, new Date(), previous, true);
+            final ArgumentCaptor<ReplaceChangeLogLockStatement> replaceCaptor =
+                    ArgumentCaptor.forClass(ReplaceChangeLogLockStatement.class);
+
+            Scope.getCurrentScope().getSingleton(ExecutorService.class).setExecutor(EXECUTOR_NAME, database, executorMock);
+            lockService.setDatabase(database);
+
+            doReturn(1L).when(executorMock).queryForLong(any(CountCollectionByNameStatement.class));
+            doNothing().when(executorMock).execute(any(AdjustChangeLogLockCollectionStatement.class));
+            Document lockedDoc = lockService.getConverter().toDocument(lockedLock);
+            doReturn(lockedDoc)
+                    .when(executorMock).queryForObject(any(SelectChangeLogLockStatement.class), eq(Document.class));
+            doReturn(Collections.singletonList(lockedDoc))
+                    .when(executorMock).queryForList(any(FindAllStatement.class), eq(Document.class));
+            doReturn(1).when(executorMock).update(replaceCaptor.capture());
+
+            assertThat(lockService.acquireLock()).isTrue();
+            assertThat(lockService.hasChangeLogLock()).isTrue();
+            assertThat(replaceCaptor.getValue().getStealPreviousLockedBy()).isEqualTo(previous);
+        } finally {
+            System.clearProperty(ChangeLogLockOwner.ENV_HARNESS_LOCK_RECOVERY);
+            System.clearProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX);
+        }
+    }
+
+    @SneakyThrows
+    @Test
+    void acquireLock_customerOwned_returnsFalseWithoutUpdate() {
+        System.setProperty(ChangeLogLockOwner.ENV_HARNESS_LOCK_RECOVERY, "true");
+        System.setProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX, "pfx");
+        try {
+            final MongoChangeLogLock lockedLock = new MongoChangeLogLock(1, new Date(), "customer-host (10.0.0.1)", true);
+
+            Scope.getCurrentScope().getSingleton(ExecutorService.class).setExecutor(EXECUTOR_NAME, database, executorMock);
+            lockService.setDatabase(database);
+
+            doReturn(1L).when(executorMock).queryForLong(any(CountCollectionByNameStatement.class));
+            doNothing().when(executorMock).execute(any(AdjustChangeLogLockCollectionStatement.class));
+            Document lockedDoc = lockService.getConverter().toDocument(lockedLock);
+            doReturn(lockedDoc)
+                    .when(executorMock).queryForObject(any(SelectChangeLogLockStatement.class), eq(Document.class));
+            doReturn(Collections.singletonList(lockedDoc))
+                    .when(executorMock).queryForList(any(FindAllStatement.class), eq(Document.class));
+
+            assertThat(lockService.acquireLock()).isFalse();
+            assertThat(lockService.hasChangeLogLock()).isFalse();
+            verify(executorMock, never()).update(any(ReplaceChangeLogLockStatement.class));
+        } finally {
+            System.clearProperty(ChangeLogLockOwner.ENV_HARNESS_LOCK_RECOVERY);
+            System.clearProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX);
+        }
+    }
+
+    @SneakyThrows
+    @Test
+    void acquireLock_stealMatchesZeroRows_returnsFalse() {
+        System.setProperty(ChangeLogLockOwner.ENV_HARNESS_LOCK_RECOVERY, "true");
+        System.setProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX, "pfx");
+        try {
+            String previous = "HI|pfx|plan-old|dead-host (10.0.0.1)";
+            final MongoChangeLogLock lockedLock = new MongoChangeLogLock(1, new Date(), previous, true);
+
+            Scope.getCurrentScope().getSingleton(ExecutorService.class).setExecutor(EXECUTOR_NAME, database, executorMock);
+            lockService.setDatabase(database);
+
+            doReturn(1L).when(executorMock).queryForLong(any(CountCollectionByNameStatement.class));
+            doNothing().when(executorMock).execute(any(AdjustChangeLogLockCollectionStatement.class));
+            Document lockedDoc = lockService.getConverter().toDocument(lockedLock);
+            doReturn(lockedDoc)
+                    .when(executorMock).queryForObject(any(SelectChangeLogLockStatement.class), eq(Document.class));
+            doReturn(Collections.singletonList(lockedDoc))
+                    .when(executorMock).queryForList(any(FindAllStatement.class), eq(Document.class));
+            doReturn(0).when(executorMock).update(any(ReplaceChangeLogLockStatement.class));
+
+            assertThat(lockService.acquireLock()).isFalse();
+            assertThat(lockService.hasChangeLogLock()).isFalse();
+            verify(executorMock).update(any(ReplaceChangeLogLockStatement.class));
+        } finally {
+            System.clearProperty(ChangeLogLockOwner.ENV_HARNESS_LOCK_RECOVERY);
+            System.clearProperty(ChangeLogLockOwner.ENV_HARNESS_LOCKEDBY_PREFIX);
+        }
+    }
+
+    @SneakyThrows
+    @Test
     void acquireLockWhenConcurrentLocked() {
 
         final MongoChangeLogLock lockedLock = new MongoChangeLogLock(1, new Date(), "lockedByMock", FALSE);
@@ -582,6 +673,7 @@ class MongoLockServiceTest {
         assertThat(lockService.hasChangeLogLock()).isFalse();
         lockService.releaseLock();
         assertThat(replaceLockChangeLogStatementArgumentCaptor.getValue().isLocked()).isFalse();
+        assertThat(replaceLockChangeLogStatementArgumentCaptor.getValue().isForceUnlock()).isFalse();
 
         verify(executorMock, times(1)).queryForLong(any(CountCollectionByNameStatement.class));
         verify(executorMock, times(1)).update(any(ReplaceChangeLogLockStatement.class));
@@ -677,6 +769,7 @@ class MongoLockServiceTest {
         assertThat(lockService.hasChangeLogLock()).isFalse();
         lockService.forceReleaseLock();
         assertThat(replaceLockChangeLogStatementArgumentCaptor.getValue().isLocked()).isFalse();
+        assertThat(replaceLockChangeLogStatementArgumentCaptor.getValue().isForceUnlock()).isTrue();
 
         verify(executorMock, times(1)).queryForLong(any(CountCollectionByNameStatement.class));
         verify(executorMock, times(1)).execute(any(AdjustChangeLogLockCollectionStatement.class));
