@@ -26,7 +26,7 @@
         <!-- Parent inherits liquibase-core/commercial at this version; maven-repo/ has empty stubs.
              Real Liquibase API + Harness lock recovery come only from dbops-liquibase-core. -->
         <liquibase.version>4.33.0-harness</liquibase.version>
-        <dbops.liquibase.core.version>1.1.1</dbops.liquibase.core.version>
+        <dbops.liquibase.core.version>1.1.2</dbops.liquibase.core.version>
         <jupiter.surefire.version>1.3.2</jupiter.surefire.version>
         <mockito-core.version>4.11.0</mockito-core.version>
         <mockito-junit-jupiter.version>4.8.0</mockito-junit-jupiter.version>
