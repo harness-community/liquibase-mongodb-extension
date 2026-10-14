@@ -285,7 +285,7 @@ public class MongoConnection extends AbstractNoSqlConnection {
     }
 
     private static String maskUserInfo(final String url) {
-        return url == null ? null : url.replaceFirst("://.*@", "://***@");
+        return url == null ? null : url.replaceFirst("://[^?#]*@", "://***@");
     }
 
     public boolean isOidcAuth() {

@@ -376,6 +376,14 @@ class MongoConnectionTest {
     }
 
     @Test
+    void openFailureMasksOnlyUserInfoWhenQueryContainsAt() {
+        assertThatExceptionOfType(DatabaseException.class)
+                .isThrownBy(() -> connection.open("mongodb://u:p%40ss@localhost:27017/test_db?authMechanism=MONGODB-OIDC&appName=a@b", driverMock, null))
+                .withMessageNotContaining("p%40ss")
+                .withMessageContaining("mongodb://***@localhost:27017/test_db?authMechanism=MONGODB-OIDC&appName=a@b");
+    }
+
+    @Test
     void openFailsForK8sOidcUrlWithUserName() {
         assertThatExceptionOfType(DatabaseException.class)
                 .isThrownBy(() -> connection.open("mongodb://user1@localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s", driverMock, null))

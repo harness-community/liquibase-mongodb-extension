@@ -1,16 +1,13 @@
 package liquibase.nosql.executor;
 
-import com.mongodb.ConnectionString;
 import liquibase.changelog.ChangeSet;
 import liquibase.database.Database;
 import liquibase.exception.DatabaseException;
 import liquibase.exception.ValidationErrors;
 import liquibase.ext.mongodb.change.CreateCollectionChange;
 import liquibase.ext.mongodb.change.MongoshChange;
-import liquibase.ext.mongodb.database.MongoConnection;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import liquibase.ext.mongodb.statement.MongoshStatement;
-import liquibase.ext.mongodb.tools.MongoshRunner;
 import liquibase.sql.visitor.SqlVisitor;
 import liquibase.statement.SqlStatement;
 import org.junit.jupiter.api.BeforeEach;

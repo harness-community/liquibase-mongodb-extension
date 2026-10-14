@@ -1,5 +1,6 @@
 package liquibase.ext.mongodb.change;
 
+import liquibase.change.Change;
 import liquibase.changelog.ChangeSet;
 import liquibase.changelog.DatabaseChangeLog;
 import liquibase.changelog.RanChangeSet;
@@ -10,6 +11,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 
@@ -43,6 +45,42 @@ class MongoshOidcChangeLogValidationTest extends AbstractMongoChangeTest {
 
     @Test
     @SneakyThrows
+    void alreadyRanRunOnChangeAndRunAlwaysChangeSetsAreStillValidated() {
+        final ChangeSet runOnChange = changeSet("runOnChange", false, true, mongoChange());
+        final ChangeSet runAlways = changeSet("runAlways", true, false, mongoChange());
+        final ValidatingVisitor visitor = new ValidatingVisitor(
+                Arrays.asList(new RanChangeSet(runOnChange), new RanChangeSet(runAlways)));
+
+        visitor.visit(runOnChange, changeLog, database, new HashSet<>());
+        visitor.visit(runAlways, changeLog, database, new HashSet<>());
+
+        assertThat(visitor.getValidationErrors().getErrorMessages())
+                .hasSize(2)
+                .allMatch(msg -> msg.contains(MongoshRunner.MSG_MONGOSH_UNSUPPORTED_WITH_OIDC));
+    }
+
+    @Test
+    @SneakyThrows
+    void pendingChangeSetWithOnValidationFailMarkRanPasses() {
+        final ChangeSet pending = mongoChangeSet("markRan", null);
+        pending.setOnValidationFail(ChangeSet.ValidationFailOption.MARK_RAN);
+        final ValidatingVisitor visitor = new ValidatingVisitor(Collections.emptyList());
+
+        visitor.visit(pending, changeLog, database, new HashSet<>());
+
+        assertThat(visitor.validationPassed()).isTrue();
+    }
+
+    @Test
+    @SneakyThrows
+    void pendingMongoFileChangeSetFails() {
+        final MongoshFileChange change = new MongoshFileChange();
+        change.setPath("scripts/test.js");
+        assertPendingFails(changeSet("mongoFile", false, false, change));
+    }
+
+    @Test
+    @SneakyThrows
     void pendingMongoChangeSetFailsNamingTheChangeSet() {
         assertPendingFails(mongoChangeSet("pending", "mongosh"));
     }
@@ -70,9 +108,19 @@ class MongoshOidcChangeLogValidationTest extends AbstractMongoChangeTest {
 
     private ChangeSet mongoChangeSet(final String id, final String runWith) {
         final ChangeSet changeSet = new ChangeSet(id, "author", false, false, "changelog.xml", null, null, runWith, null, true, null, changeLog);
-        final MongoshChange change = new MongoshChange();
-        change.setMongo("db.users.find({});");
+        changeSet.addChange(mongoChange());
+        return changeSet;
+    }
+
+    private ChangeSet changeSet(final String id, final boolean alwaysRun, final boolean runOnChange, final Change change) {
+        final ChangeSet changeSet = new ChangeSet(id, "author", alwaysRun, runOnChange, "changelog.xml", null, null, null, null, true, null, changeLog);
         changeSet.addChange(change);
         return changeSet;
+    }
+
+    private static MongoshChange mongoChange() {
+        final MongoshChange change = new MongoshChange();
+        change.setMongo("db.users.find({});");
+        return change;
     }
 }

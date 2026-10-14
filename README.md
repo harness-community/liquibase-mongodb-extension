@@ -115,6 +115,8 @@ mongodb+srv://cluster0.example.com/testdb?authMechanism=MONGODB-OIDC&authMechani
 * The `MONGODB-OIDC` value is case-sensitive, as the driver requires (the `authMechanism` key is not).
 * When `authMechanism=MONGODB-OIDC` is set, any `username`/`password` Liquibase properties are ignored and are never added to the connection string. Credentials written into the URL itself are rejected before connecting: a password always, and a username with `ENVIRONMENT:k8s`.
 * `mongo` and `mongoFile` changes (mongosh) are **not supported** on OIDC connections because Atlas Workload Identity Federation only works through the drivers, not mongosh. A pending changeset containing one fails changelog validation, naming the changeset, before anything is deployed; changesets that already ran (and are not `runOnChange`/`runAlways`) are left alone, so existing history doesn't block moving a connector to OIDC. Use the native change types or `executeNative` instead.
+  * Every changelog command validates the whole changelog, so a pending mongosh changeset fails `rollback*`, `update-count`/`update-to-tag` (even when it is past the target), `status` and `changelog-sync` too, and `<preConditions onFail="MARK_RAN">` does not help because validation runs first. To get past it, either mark the changeset `onValidationFail="MARK_RAN"`, exclude it with contexts/labels, or run `changelog-sync` once over a non-OIDC connection.
+  * Rolling back an already-ran mongosh changeset over OIDC passes validation but fails when the rollback reaches it; changesets rolled back before it stay rolled back.
 
 <a name="getting-started"></a>
 ## Getting Started
