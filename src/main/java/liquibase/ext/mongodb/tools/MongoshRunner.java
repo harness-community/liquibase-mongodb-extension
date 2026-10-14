@@ -88,9 +88,14 @@ public class MongoshRunner extends ExecuteShellCommandChange {
         this.setTimeout("1800");
     }
 
+    public static boolean isOidcConnection(Database database) {
+        return database != null && database.getConnection() instanceof MongoConnection
+                && ((MongoConnection) database.getConnection()).isOidcAuth();
+    }
+
     @Override
     protected List<String> createFinalCommandArray(Database database) {
-        if (database.getConnection() instanceof MongoConnection && ((MongoConnection) database.getConnection()).isOidcAuth()) {
+        if (isOidcConnection(database)) {
             throw new UnexpectedLiquibaseException(MSG_MONGOSH_UNSUPPORTED_WITH_OIDC);
         }
 

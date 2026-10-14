@@ -369,7 +369,9 @@ class MongoConnectionTest {
     void openFailsForOidcUrlWithUserAndPassword() {
         assertThatExceptionOfType(DatabaseException.class)
                 .isThrownBy(() -> connection.open("mongodb://user1:password1@localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s", driverMock, null))
-                .withRootCauseInstanceOf(IllegalArgumentException.class);
+                .withRootCauseInstanceOf(IllegalArgumentException.class)
+                .withMessageNotContaining("password1")
+                .withMessageContaining("mongodb://***@localhost:27017/test_db");
         verifyNoInteractions(driverMock);
     }
 

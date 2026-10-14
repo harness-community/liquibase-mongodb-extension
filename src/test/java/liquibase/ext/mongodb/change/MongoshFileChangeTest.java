@@ -6,6 +6,7 @@ import liquibase.exception.SetupException;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.exception.ValidationErrors;
 import liquibase.ext.mongodb.statement.MongoshStatement;
+import liquibase.ext.mongodb.tools.MongoshRunner;
 import liquibase.statement.SqlStatement;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +34,23 @@ class MongoshFileChangeTest extends AbstractMongoChangeTest {
         assertThatThrownBy(() -> mongoshFileChange.finishInitialization())
                 .isInstanceOf(SetupException.class)
                 .hasMessageContaining("'path' is required for mongoFile changes");
+    }
+
+    @Test
+    void validate_withOidcConnection_shouldReturnValidationError() {
+        mongoshFileChange.setPath("scripts/test.js");
+        connectWith("mongodb://localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s");
+
+        assertThat(mongoshFileChange.validate(database).getErrorMessages())
+                .containsExactly(MongoshRunner.MSG_MONGOSH_UNSUPPORTED_WITH_OIDC);
+    }
+
+    @Test
+    void validate_withNonOidcConnection_shouldReturnNoErrors() {
+        mongoshFileChange.setPath("scripts/test.js");
+        connectWith("mongodb://user1:password1@localhost:27017/test_db");
+
+        assertThat(mongoshFileChange.validate(database).hasErrors()).isFalse();
     }
 
     @Test

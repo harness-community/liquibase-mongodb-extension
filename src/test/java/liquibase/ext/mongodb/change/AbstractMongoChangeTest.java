@@ -20,6 +20,8 @@ package liquibase.ext.mongodb.change;
  * #L%
  */
 
+import com.mongodb.ConnectionString;
+import liquibase.ext.mongodb.database.MongoConnection;
 import liquibase.ext.mongodb.database.MongoLiquibaseDatabase;
 import lombok.NoArgsConstructor;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,5 +38,11 @@ public abstract class AbstractMongoChangeTest {
                 return "test";
             }
         };
+    }
+
+    protected void connectWith(final String url) {
+        final MongoConnection connection = new MongoConnection();
+        connection.setConnectionString(new ConnectionString(url));
+        database.setConnection(connection);
     }
 }

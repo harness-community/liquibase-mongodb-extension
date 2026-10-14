@@ -2,6 +2,7 @@ package liquibase.ext.mongodb.change;
 
 import liquibase.exception.ValidationErrors;
 import liquibase.ext.mongodb.statement.MongoshStatement;
+import liquibase.ext.mongodb.tools.MongoshRunner;
 import liquibase.statement.SqlStatement;
 import org.junit.jupiter.api.Test;
 
@@ -63,6 +64,25 @@ class MongoshChangeTest extends AbstractMongoChangeTest {
         assertThat(errors.hasErrors()).isTrue();
         assertThat(errors.getErrorMessages())
                 .anyMatch(msg -> msg.contains("'mongo' property is required"));
+    }
+
+    @Test
+    void validate_withOidcConnection_shouldReturnValidationError() {
+        final MongoshChange mongoshChange = new MongoshChange();
+        mongoshChange.setMongo("db.users.find({});");
+        connectWith("mongodb://localhost:27017/test_db?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s");
+
+        assertThat(mongoshChange.validate(database).getErrorMessages())
+                .containsExactly(MongoshRunner.MSG_MONGOSH_UNSUPPORTED_WITH_OIDC);
+    }
+
+    @Test
+    void validate_withNonOidcConnection_shouldReturnNoErrors() {
+        final MongoshChange mongoshChange = new MongoshChange();
+        mongoshChange.setMongo("db.users.find({});");
+        connectWith("mongodb://user1:password1@localhost:27017/test_db");
+
+        assertThat(mongoshChange.validate(database).hasErrors()).isFalse();
     }
 
     @Test

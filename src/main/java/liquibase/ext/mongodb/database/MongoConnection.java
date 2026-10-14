@@ -20,7 +20,6 @@ package liquibase.ext.mongodb.database;
  * #L%
  */
 
-import com.mongodb.AuthenticationMechanism;
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoCredential;
 import com.mongodb.client.MongoClient;
@@ -175,7 +174,7 @@ public class MongoConnection extends AbstractNoSqlConnection {
                     .withCodecRegistry(BsonUtils.uuidCodecRegistry());
         } catch (final Exception e) {
             throw new DatabaseException("Could not open connection to database: "
-                    + ofNullable(connectionString).map(ConnectionString::getDatabase).orElse(url), e);
+                    + ofNullable(connectionString).map(ConnectionString::getDatabase).orElse(maskUserInfo(url)), e);
         }
     }
 
@@ -272,7 +271,8 @@ public class MongoConnection extends AbstractNoSqlConnection {
 
     private static boolean isOidc(final ConnectionString connectionString) {
         final MongoCredential credential = connectionString.getCredential();
-        return credential != null && credential.getAuthenticationMechanism() == AuthenticationMechanism.MONGODB_OIDC;
+        // by name: the enum constant is absent from drivers older than 5.1 and would throw NoSuchFieldError
+        return credential != null && "MONGODB-OIDC".equals(credential.getMechanism());
     }
 
     // ENVIRONMENT:k8s reads the projected token file and has no use for a username; fail before connecting
@@ -282,6 +282,10 @@ public class MongoConnection extends AbstractNoSqlConnection {
                 && "k8s".equals(credential.getMechanismProperty(MongoCredential.ENVIRONMENT_KEY, null))) {
             throw new IllegalArgumentException("A username must not be specified in the URL for MONGODB-OIDC with ENVIRONMENT:k8s");
         }
+    }
+
+    private static String maskUserInfo(final String url) {
+        return url == null ? null : url.replaceFirst("://.*@", "://***@");
     }
 
     public boolean isOidcAuth() {

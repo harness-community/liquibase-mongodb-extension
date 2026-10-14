@@ -25,6 +25,7 @@ import liquibase.change.DatabaseChange;
 import liquibase.database.Database;
 import liquibase.exception.ValidationErrors;
 import liquibase.ext.mongodb.statement.MongoshStatement;
+import liquibase.ext.mongodb.tools.MongoshRunner;
 import liquibase.statement.SqlStatement;
 import liquibase.util.StringUtil;
 import lombok.Getter;
@@ -76,6 +77,10 @@ public class MongoshChange extends AbstractSQLChange {
         ValidationErrors validationErrors = new ValidationErrors();
         if (StringUtils.trimToNull(this.getMongo()) == null) {
             validationErrors.addError("'mongo' property is required for mongosh changes.");
+        }
+        // change-level so core applies it only to pending changesets, with or without runWith
+        if (MongoshRunner.isOidcConnection(database)) {
+            validationErrors.addError(MongoshRunner.MSG_MONGOSH_UNSUPPORTED_WITH_OIDC);
         }
         return validationErrors;
     }
